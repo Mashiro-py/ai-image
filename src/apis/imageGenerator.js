@@ -7,7 +7,7 @@ import axios from 'axios';
 // API配置
 const API_CONFIG = {
   baseUrl: 'https://api.openai.com/v1/',
-  apiKey: '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', // 系统提供的API Key，实际部署时替换为真实的Key
+  apiKey: '', // 系统提供的API Key，实际部署时替换为真实的Key
   defaultModel: 'dall-e-2', // 默认使用DALL-E 3模型
   defaultSize: '1024x1024', // 默认图像尺寸
 };

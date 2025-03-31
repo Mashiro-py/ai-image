@@ -66,7 +66,7 @@ onMounted(() => {
   window.addEventListener('resize', handleResize);
   
   // 使用系统提供的API Key
-  setApiKey('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'); // 这里将使用实际的系统API Key
+  setApiKey(''); // 这里将使用实际的系统API Key
 });
 
 // 组件卸载前移除事件监听器
