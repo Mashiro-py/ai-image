@@ -1,6 +1,6 @@
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
-import { generateImage, setApiKey } from './apis/imageGenerator';
+import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
+import { generateImage, setApiKey, setModel, getCurrentModel, AI_MODELS } from './apis/imageGenerator';
 
 // 图像生成相关状态
 const prompt = ref('');
@@ -8,13 +8,10 @@ const isLoading = ref(false);
 const error = ref(null);
 const generatedImage = ref(null);
 const apiKeySet = ref(true); // 默认已设置API Key
+const selectedModel = ref(getCurrentModel()); // 当前选中的模型
 
-// 预设的尺寸选项
-const presetSizes = [
-  { name: '正方形', width: 1024, height: 1024 },
-  { name: '横向', width: 512, height: 512 },
-  { name: '纵向', width: 256, height: 256 }
-];
+// 预设的尺寸选项，基于当前选择的模型动态更新
+const presetSizes = ref(AI_MODELS[selectedModel.value].presetSizes);
 
 // 初始化画布尺寸
 const initialCanvasSize = () => {
@@ -39,7 +36,31 @@ const initialCanvasSize = () => {
 const canvasSettings = reactive({
   ...initialCanvasSize(),
   aspectRatio: '1:1',
-  quality: 5
+  quality: 5,
+  model: selectedModel.value
+});
+
+// 监听模型变化，更新预设尺寸
+watch(selectedModel, (newModel) => {
+  // 更新模型设置
+  setModel(newModel);
+  // 更新预设尺寸
+  presetSizes.value = AI_MODELS[newModel].presetSizes;
+  // 更新画布设置中的模型
+  canvasSettings.model = newModel;
+  
+  // 如果当前尺寸在新模型中不存在，则切换到默认尺寸
+  const currentSize = { width: canvasSettings.width, height: canvasSettings.height };
+  const sizeExists = presetSizes.value.some(size => 
+    size.width === currentSize.width && size.height === currentSize.height
+  );
+  
+  if (!sizeExists) {
+    // 默认使用第一个预设尺寸
+    const defaultSize = presetSizes.value[0];
+    canvasSettings.width = defaultSize.width;
+    canvasSettings.height = defaultSize.height;
+  }
 });
 
 // 窗口大小变化时调整画布尺寸
@@ -66,7 +87,7 @@ onMounted(() => {
   window.addEventListener('resize', handleResize);
   
   // 使用系统提供的API Key
-  setApiKey(''); // 这里将使用实际的系统API Key
+  setApiKey('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'); // 这里将使用实际的系统API Key
 });
 
 // 组件卸载前移除事件监听器
@@ -194,11 +215,17 @@ const findGCD = (a, b) => {
         <div class="section">
           <h2>生成模型</h2>
           <div class="model-selector">
-            <div class="model-item active">
+            <div 
+              v-for="(modelInfo, modelId) in AI_MODELS" 
+              :key="modelId"
+              class="model-item"
+              :class="{ active: selectedModel === modelId }"
+              @click="selectedModel = modelId"
+            >
               <img src="./assets/images/model-icon.png" alt="模型图标" />
               <div class="model-info">
-                <p>图片2.0</p>
-                <p class="model-desc">文字描述|支持图片多角度</p>
+                <p>{{ modelInfo.name }}</p>
+                <p class="model-desc">{{ modelInfo.description }}</p>
               </div>
             </div>
           </div>
@@ -457,7 +484,7 @@ h1 {
 .model-selector {
   background-color: #1a1a1a;
   border-radius: 4px;
-  padding: 1rem;
+  padding: 0.5rem;
 }
 
 .model-item {
@@ -466,6 +493,13 @@ h1 {
   padding: 0.75rem;
   border-radius: 4px;
   cursor: pointer;
+  margin-bottom: 0.5rem;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.model-item:hover {
+  background-color: #262626;
 }
 
 .model-item.active {
