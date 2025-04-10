@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "browser-tools-mcp":{
+            "command": "cmd",
+            "args":[
+                "/c",
+                "npx",
+                "-y",
+                "@agentdeskai/browser-tools-mcp@latest"
+            ]
+        }
+    }
+}

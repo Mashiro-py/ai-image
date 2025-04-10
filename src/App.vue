@@ -1,6 +1,17 @@
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount, watch, computed } from 'vue';
-import { generateImage, setApiKey, setModel, getCurrentModel, AI_MODELS, editImage, expandImage, urlToFile } from './apis/imageGenerator';
+import { 
+  generateImage, 
+  setApiKey, 
+  setModel, 
+  getCurrentModel, 
+  AI_MODELS, 
+  editImage, 
+  expandImage, 
+  urlToFile,
+  optimizePromptWithDeepSeek,
+  optimizePromptWithCoze
+} from './apis/imageGenerator';
 
 // 图像生成相关状态
 const prompt = ref('');
@@ -9,6 +20,18 @@ const error = ref(null);
 const apiKeySet = ref(true); // 默认已设置API Key
 const selectedModel = ref(getCurrentModel()); // 当前选中的模型
 const imageQuality = ref('standard'); // 图像质量设置
+
+// 提示词优化相关状态
+const isOptimizingPrompt = ref(false); // 是否正在优化提示词
+const promptOptimizer = ref('none'); // 优化器选择: none, deepseek, coze
+const cozeParams = reactive({
+  title: '',
+  subTitle: '',
+  company: '',
+  industryKeywords: ''
+});
+const showCozeParamsDialog = ref(false); // 是否显示Coze参数输入对话框
+const optimizedPrompt = ref(''); // 优化后的提示词
 
 // 图像编辑相关状态
 const uploadedImage = ref(null);
@@ -533,6 +556,65 @@ const applyPresetSize = (width, height) => {
 const findGCD = (a, b) => {
   return b === 0 ? a : findGCD(b, a % b);
 };
+
+// 优化提示词方法
+const optimizePrompt = async () => {
+  if (!prompt.value.trim()) {
+    error.value = '请先输入需要优化的提示词';
+    return;
+  }
+  
+  try {
+    isOptimizingPrompt.value = true;
+    error.value = promptOptimizer.value === 'deepseek' 
+      ? '正在使用DeepSeek优化提示词，请稍候...' 
+      : '正在使用Coze优化提示词，这可能需要较长时间（约15-30秒）...';
+    
+    // 保存原始提示词用于对比
+    const originalPrompt = prompt.value;
+    
+    // 根据选择的优化器调用不同的API
+    if (promptOptimizer.value === 'deepseek') {
+      optimizedPrompt.value = await optimizePromptWithDeepSeek(prompt.value);
+    } else if (promptOptimizer.value === 'coze') {
+      // 如果选择Coze但未显示参数对话框，则显示对话框
+      if (!showCozeParamsDialog.value) {
+        showCozeParamsDialog.value = true;
+        isOptimizingPrompt.value = false;
+        error.value = null;
+        return;
+      }
+      
+      // 验证Coze参数
+      if (!cozeParams.title || !cozeParams.subTitle || !cozeParams.company || !cozeParams.industryKeywords) {
+        error.value = '请填写所有Coze必要参数';
+        isOptimizingPrompt.value = false;
+        return;
+      }
+      
+      // 调用Coze优化API
+      optimizedPrompt.value = await optimizePromptWithCoze(prompt.value, cozeParams);
+      showCozeParamsDialog.value = false; // 优化完成后关闭对话框
+    }
+    
+    // 优化成功后，将优化后的内容设置为当前提示词
+    if (optimizedPrompt.value) {
+      prompt.value = optimizedPrompt.value;
+      // 显示提示信息，告知用户提示词已被优化
+      error.value = '提示词已成功优化';
+      setTimeout(() => {
+        if (error.value === '提示词已成功优化') {
+          error.value = null;
+        }
+      }, 2000);
+    }
+  } catch (err) {
+    console.error('提示词优化失败:', err);
+    error.value = err.message || '提示词优化失败';
+  } finally {
+    isOptimizingPrompt.value = false;
+  }
+};
 </script>
 
 <template>
@@ -776,6 +858,44 @@ const findGCD = (a, b) => {
             ></textarea>
             
             <div class="input-actions">
+              <!-- 添加提示词优化选择器 -->
+              <div class="prompt-optimizer">
+                <span class="optimizer-label">提示词优化:</span>
+                <div class="optimizer-selector">
+                  <button 
+                    class="optimizer-btn"
+                    :class="{ active: promptOptimizer === 'none' }"
+                    @click="promptOptimizer = 'none'"
+                    :disabled="isLoading || isExpanding || isOptimizingPrompt"
+                  >
+                    无
+                  </button>
+                  <button 
+                    class="optimizer-btn"
+                    :class="{ active: promptOptimizer === 'deepseek' }"
+                    @click="promptOptimizer = 'deepseek'"
+                    :disabled="isLoading || isExpanding || isOptimizingPrompt"
+                  >
+                    DeepSeek
+                  </button>
+                  <button 
+                    class="optimizer-btn"
+                    :class="{ active: promptOptimizer === 'coze' }"
+                    @click="promptOptimizer = 'coze'"
+                    :disabled="isLoading || isExpanding || isOptimizingPrompt"
+                  >
+                    Coze
+                  </button>
+                  <button 
+                    class="optimize-btn"
+                    @click="optimizePrompt"
+                    :disabled="isLoading || isExpanding || isOptimizingPrompt || promptOptimizer === 'none' || !prompt.trim()"
+                  >
+                    {{ isOptimizingPrompt ? '优化中...' : '优化' }}
+                  </button>
+                </div>
+              </div>
+
               <div class="image-count-selector">
                 <span class="count-label">图片数量:</span>
                 <div class="count-buttons">
@@ -802,6 +922,51 @@ const findGCD = (a, b) => {
           </div>
         </div>
       </main>
+    </div>
+    
+    <!-- Coze参数对话框 -->
+    <div v-if="showCozeParamsDialog" class="modal-overlay">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h3>请输入Coze优化所需参数</h3>
+          <button class="modal-close" @click="showCozeParamsDialog = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="dialog-description">
+            Coze工作流需要以下参数来优化您的提示词，生成更适合您需求的图像描述。处理时间可能较长，请耐心等待。
+          </div>
+          <div class="form-group">
+            <label>标题</label>
+            <input type="text" v-model="cozeParams.title" placeholder="例如：米其林轮胎" />
+            <div class="field-hint">主要产品或活动名称</div>
+          </div>
+          <div class="form-group">
+            <label>副标题</label>
+            <input type="text" v-model="cozeParams.subTitle" placeholder="例如：米其林轮胎年会活动" />
+            <div class="field-hint">补充说明或活动具体描述</div>
+          </div>
+          <div class="form-group">
+            <label>公司</label>
+            <input type="text" v-model="cozeParams.company" placeholder="例如：米其林轮胎" />
+            <div class="field-hint">相关公司或品牌名称</div>
+          </div>
+          <div class="form-group">
+            <label>行业关键词</label>
+            <input type="text" v-model="cozeParams.industryKeywords" placeholder="例如：轮胎" />
+            <div class="field-hint">与行业相关的关键词，可用逗号分隔多个词</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="cancel-btn" @click="showCozeParamsDialog = false">取消</button>
+          <button 
+            class="confirm-btn" 
+            @click="optimizePrompt"
+            :disabled="!cozeParams.title || !cozeParams.subTitle || !cozeParams.company || !cozeParams.industryKeywords"
+          >
+            确认并优化
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -1371,7 +1536,7 @@ h1 {
   padding: 0.75rem;
   resize: none;
   font-size: 1rem;
-  min-height: 50px;
+  min-height: 120px;
   margin-bottom: 0.5rem;
 }
 
@@ -1517,5 +1682,196 @@ h1 {
   background-color: rgba(0, 164, 228, 0.2);
   border-color: #00a4e4;
   color: #00a4e4;
+}
+
+/* 提示词优化器样式 */
+.prompt-optimizer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+.optimizer-label {
+  font-size: 0.9rem;
+  color: #aaa;
+  white-space: nowrap;
+}
+
+.optimizer-selector {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.optimizer-btn {
+  padding: 0.4rem 0.6rem;
+  background-color: #333;
+  border: 1px solid #444;
+  color: #f0f0f0;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.optimizer-btn:hover:not(:disabled):not(.active) {
+  background-color: #444;
+}
+
+.optimizer-btn.active {
+  background-color: rgba(0, 164, 228, 0.2);
+  border-color: #00a4e4;
+  color: #00a4e4;
+}
+
+.optimizer-btn:disabled,
+.optimize-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.optimize-btn {
+  padding: 0.4rem 0.7rem;
+  background-color: #8a57de;
+  border: 1px solid #8a57de;
+  color: white;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.optimize-btn:hover:not(:disabled) {
+  background-color: #7745c7;
+}
+
+/* 模态对话框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-container {
+  background-color: #262626;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #f0f0f0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.modal-body {
+  padding: 1.5rem;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #f0f0f0;
+  font-size: 0.9rem;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #f0f0f0;
+  font-size: 1rem;
+}
+
+.form-group input::placeholder {
+  color: #777;
+}
+
+.modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #333;
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.cancel-btn {
+  padding: 0.6rem 1.2rem;
+  background-color: #333;
+  border: 1px solid #444;
+  color: #f0f0f0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancel-btn:hover {
+  background-color: #444;
+}
+
+.confirm-btn {
+  padding: 0.6rem 1.2rem;
+  background-color: #8a57de;
+  border: 1px solid #8a57de;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.confirm-btn:hover:not(:disabled) {
+  background-color: #7745c7;
+}
+
+.confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dialog-description {
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: #aaa;
+}
+
+.field-hint {
+  font-size: 0.8rem;
+  color: #777;
 }
 </style>

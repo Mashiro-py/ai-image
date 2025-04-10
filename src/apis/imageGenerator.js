@@ -757,3 +757,105 @@ export const urlToFile = async (url, filename) => {
     throw new Error('图像URL转换为文件失败');
   }
 };
+
+/**
+ * 使用DeepSeek API优化提示词
+ * @param {string} originalPrompt - 原始提示词
+ * @returns {Promise<string>} 优化后的提示词
+ */
+export const optimizePromptWithDeepSeek = async (originalPrompt) => {
+  try {
+    // 调用DeepSeek API进行提示词优化
+    const response = await axios.post(
+      'https://api.deepseek.com/v1/chat/completions',
+      {
+        model: 'deepseek-chat',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个专业的AI图像生成提示词专家。请优化用户提供的提示词，使其能够生成更加精美、详细的图像。添加适当的细节描述、风格、光影、色彩等元素。'
+          },
+          {
+            role: 'user',
+            content: `请优化以下图像生成提示词，不要改变原始意图，但让描述更加生动、详细：\n\n"${originalPrompt}"`
+          }
+        ],
+        temperature: 0.7
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer sk-1890c0853a0841cfa2512732dc7c93c7' // 实际使用时替换为真实API密钥
+        }
+      }
+    );
+    
+    // 提取优化后的提示词
+    const optimizedPrompt = response.data.choices[0].message.content;
+    console.log('DeepSeek优化后的提示词:', optimizedPrompt);
+    
+    return optimizedPrompt;
+  } catch (error) {
+    console.error('DeepSeek提示词优化失败:', error);
+    throw new Error(`DeepSeek提示词优化失败: ${error.message}`);
+  }
+};
+
+/**
+ * 使用Coze工作流API优化提示词
+ * @param {string} originalPrompt - 原始提示词
+ * @param {Object} params - Coze所需参数
+ * @returns {Promise<string>} 优化后的提示词
+ */
+export const optimizePromptWithCoze = async (originalPrompt, params) => {
+  try {
+    // 验证必要参数
+    if (!params.title || !params.subTitle || !params.company || !params.industryKeywords) {
+      throw new Error('Coze优化需要提供所有必要参数：title、subTitle、company、industryKeywords');
+    }
+    
+    // 调用Coze工作流API
+    const response = await axios.post(
+      'https://api.coze.cn/v1/workflow/run',
+      {
+        workflow_id: '7491234780052209674',
+        parameters: {
+          title: params.title,
+          subTitle: params.subTitle,
+          company: params.company,
+          industryKeywords: params.industryKeywords,
+          originalPrompt // 添加原始提示词作为额外参数
+        }
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer pat_59HJdzlPDfR7mEhel5hiRO4R2FLX5wj9fb3wyXaUPf546fPfPscIHyrB39HZE21S'
+        }
+      }
+    );
+    
+    // 根据实际Coze返回格式解析数据
+    console.log('Coze API返回数据:', response.data);
+    
+    if (response.data.code === 0 && response.data.data) {
+      // 解析JSON字符串获取output内容
+      try {
+        const parsedData = JSON.parse(response.data.data);
+        if (parsedData && parsedData.output) {
+          console.log('解析后的提示词:', parsedData.output);
+          return parsedData.output;
+        }
+      } catch (parseError) {
+        console.error('解析Coze返回数据失败:', parseError);
+      }
+    }
+    
+    // 如果无法从返回数据中提取优化后的提示词，使用原始提示词
+    console.warn('未能从Coze返回数据中提取优化后的提示词，使用原始提示词');
+    return originalPrompt;
+  } catch (error) {
+    console.error('Coze提示词优化失败:', error);
+    throw new Error(`Coze提示词优化失败: ${error.message}`);
+  }
+};
