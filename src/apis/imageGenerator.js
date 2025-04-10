@@ -7,13 +7,28 @@ import axios from 'axios';
 // API配置
 const API_CONFIG = {
   baseUrl: 'https://api.openai.com/v1/',
-  apiKey: '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', // 系统提供的API Key，实际部署时替换为真实的Key
+  apiKey: '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', // 系统提供的API Key，实际部署时替换为真实的Key
   defaultModel: 'dall-e-2', // 默认使用DALL-E 2模型
   defaultSize: '1024x1024', // 默认图像尺寸
+  // 即梦API配置
+  jimengApi: {
+    baseUrl: 'http://39.104.18.10:8000/v1/',
+    apiKey: 'd6fddc820557d57db836128519b9c46c'
+  }
 };
 
 // 支持的模型和它们的分辨率
 export const AI_MODELS = {
+  'jimeng-3.0': {
+    name: '即梦 3.0',
+    description: '中文模型|4张图',
+    supportedSizes: ['1024x1024', '1664x936', '936x1664'],
+    presetSizes: [
+      { name: '正方形', width: 1024, height: 1024 },
+      { name: '横向', width: 1664, height: 936 },
+      { name: '纵向', width: 936, height: 1664 }
+    ]
+  },
   'dall-e-3': {
     name: 'DALL-E 3',
     description: '最高质量|最新模型',
@@ -43,6 +58,16 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${API_CONFIG.apiKey}`
+  }
+});
+
+// 创建即梦API的axios实例
+const jimengApiClient = axios.create({
+  baseURL: API_CONFIG.jimengApi.baseUrl,
+  timeout: 60000, // 60秒超时
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_CONFIG.jimengApi.apiKey}`
   }
 });
 
@@ -88,12 +113,17 @@ export const getCurrentModel = () => {
  * @returns {Promise<Object>} 返回生成的图像信息
  */
 export const generateImage = async (prompt, options = {}) => {
+  // 使用指定的模型或默认模型
+  const model = options.model || API_CONFIG.defaultModel;
+  
+  // 检查是否为即梦API模型
+  if (model === 'jimeng-3.0') {
+    return generateJimengImage(prompt, options);
+  }
+  
   // 根据质量参数调整提示词
   const qualityPrompt = getQualityPromptAddition(options.quality || 5);
   const fullPrompt = `${prompt}  ${qualityPrompt}`;
-
-  // 使用指定的模型或默认模型
-  const model = options.model || API_CONFIG.defaultModel;
   
   // 检查是否指定了宽度和高度
   const size = options.width && options.height 
@@ -857,5 +887,67 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
   } catch (error) {
     console.error('Coze提示词优化失败:', error);
     throw new Error(`Coze提示词优化失败: ${error.message}`);
+  }
+};
+
+/**
+ * 使用即梦API生成图像
+ * @param {string} prompt - 图像描述文本
+ * @param {Object} options - 图像生成选项
+ * @returns {Promise<Object>} 返回生成的图像信息
+ */
+const generateJimengImage = async (prompt, options = {}) => {
+  try {
+    // 检查是否指定了宽度和高度
+    const width = options.width || 1024;
+    const height = options.height || 1024;
+    
+    // 准备请求数据
+    const requestData = {
+      model: "jimeng-3.0",
+      prompt: prompt,
+      negativePrompt: "",
+      width: width,
+      height: height,
+      sample_strength: 0.5
+    };
+
+    console.log('即梦API请求数据:', requestData);
+    
+    // 发送即梦API请求
+    const response = await jimengApiClient.post('images/generations', requestData);
+    
+    console.log('即梦API响应:', response.data);
+    
+    // 检查响应数据
+    if (!response.data.data || !Array.isArray(response.data.data) || response.data.data.length === 0) {
+      throw new Error('即梦API返回数据格式不正确');
+    }
+    
+    // 构造返回结果 - 即梦API总是返回4张图像
+    const imageUrls = response.data.data.map(item => item.url);
+    
+    // 返回第一张图片作为主图片，其他作为额外图片
+    return {
+      imageUrl: imageUrls[0],
+      additionalImages: imageUrls.slice(1),
+      prompt: prompt,
+      model: "jimeng-3.0",
+      size: `${width}x${height}`
+    };
+  } catch (error) {
+    console.error('即梦图像生成错误:', error);
+    // 处理Axios错误
+    if (error.response) {
+      // 服务器返回了错误状态码
+      const errorMessage = error.response.data.error?.message || '即梦图像生成失败';
+      throw new Error(errorMessage);
+    } else if (error.request) {
+      // 请求已发送但没有收到响应
+      throw new Error('即梦服务器未响应，请检查网络连接');
+    } else {
+      // 请求配置出错
+      throw error;
+    }
   }
 };

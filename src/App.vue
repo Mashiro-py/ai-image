@@ -275,19 +275,36 @@ const handleGenerateImage = async () => {
       settings: { ...canvasSettings }
     };
     
-    // 根据用户选择的数量生成图片，不再区分模型
-    const count = Math.min(imageCount.value, 4);
-    console.log(`生成${count}张图片，模型: ${selectedModel.value}`);
-    
-    // 依次生成指定数量的图片
-    for (let i = 0; i < count; i++) {
-      // 显示进度信息
-      error.value = `正在生成第 ${i+1}/${count} 张图片${imageQuality.value === 'hd' ? '（高质量模式，需要较长时间）' : ''}...`;
+    // 根据所选模型确定生成的逻辑
+    if (selectedModel.value === 'jimeng-3.0') {
+      // 即梦API总是返回4张图片
+      error.value = `正在使用即梦API生成图片，这可能需要较长时间...`;
       const result = await generateImage(prompt.value, {
         ...canvasSettings,
-        imageQuality: imageQuality.value
+        model: selectedModel.value
       });
+      
+      // 添加所有返回的图片到会话中
       session.images.push(result.imageUrl);
+      if (result.additionalImages && Array.isArray(result.additionalImages)) {
+        session.images.push(...result.additionalImages);
+      }
+    } else {
+      // 其他模型（DALL-E等）的原有逻辑
+      // 根据用户选择的数量生成图片
+      const count = Math.min(imageCount.value, 4);
+      console.log(`生成${count}张图片，模型: ${selectedModel.value}`);
+      
+      // 依次生成指定数量的图片
+      for (let i = 0; i < count; i++) {
+        // 显示进度信息
+        error.value = `正在生成第 ${i+1}/${count} 张图片${imageQuality.value === 'hd' ? '（高质量模式，需要较长时间）' : ''}...`;
+        const result = await generateImage(prompt.value, {
+          ...canvasSettings,
+          imageQuality: imageQuality.value
+        });
+        session.images.push(result.imageUrl);
+      }
     }
     
     // 清除进度信息
@@ -465,6 +482,11 @@ watch(selectedModel, (newModel) => {
   // 更新画布设置中的模型
   canvasSettings.model = newModel;
   
+  // 如果切换到即梦模型，固定生成4张图片
+  if (newModel === 'jimeng-3.0') {
+    imageCount.value = 4; // 固定为4张图片
+  }
+  
   // 如果当前尺寸在新模型中不存在，则切换到默认尺寸
   const currentSize = { width: canvasSettings.width, height: canvasSettings.height };
   const sizeExists = presetSizes.value.some(size => 
@@ -503,7 +525,7 @@ onMounted(() => {
   window.addEventListener('resize', handleResize);
   
   // 使用系统提供的API Key
-  setApiKey('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'); // 这里将使用实际的系统API Key
+  setApiKey('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'); // 这里将使用实际的系统API Key
 });
 
 // 组件卸载前移除事件监听器
@@ -620,10 +642,10 @@ const optimizePrompt = async () => {
 <template>
   <div class="app-container">
     <!-- 顶部标题 -->
-    <header>
+  <header>
       <h1>AI 图像聊天生成器</h1>
-    </header>
-    
+  </header>
+
     <div class="main-content">
       <!-- 左侧边栏 -->
       <aside class="sidebar">
@@ -663,6 +685,14 @@ const optimizePrompt = async () => {
               >
                 高清质量
               </button>
+            </div>
+          </div>
+          
+          <!-- 添加即梦API特定提示 -->
+          <div v-if="selectedModel === 'jimeng-3.0'" class="jimeng-info">
+            <div class="info-message">
+              <i class="info-icon">i</i>
+              <span>即梦API将生成4张图片，无法调整数量</span>
             </div>
           </div>
         </div>
@@ -904,7 +934,8 @@ const optimizePrompt = async () => {
                     :key="n" 
                     :class="['count-btn', { active: imageCount === n }]"
                     @click="imageCount = n"
-                    :disabled="isLoading || isExpanding"
+                    :disabled="isLoading || isExpanding || selectedModel === 'jimeng-3.0'"
+                    :title="selectedModel === 'jimeng-3.0' ? '即梦API固定生成4张图片' : ''"
                   >
                     {{ n }}
                   </button>
@@ -1873,5 +1904,36 @@ h1 {
 .field-hint {
   font-size: 0.8rem;
   color: #777;
+}
+
+/* 即梦API信息提示样式 */
+.jimeng-info {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  background-color: rgba(138, 87, 222, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(138, 87, 222, 0.3);
+}
+
+.info-message {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #aaa;
+}
+
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background-color: rgba(138, 87, 222, 0.5);
+  color: white;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: bold;
 }
 </style>
