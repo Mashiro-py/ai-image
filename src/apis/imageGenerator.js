@@ -951,3 +951,44 @@ const generateJimengImage = async (prompt, options = {}) => {
     }
   }
 };
+
+/**
+ * 使用DeepSeek 2.0 API优化提示词
+ * @param {string} originalPrompt - 原始提示词
+ * @returns {Promise<string>} 优化后的提示词
+ */
+export const optimizePromptWithDeepSeek2 = async (originalPrompt) => {
+  try {
+    const response = await axios.post(
+      'http://39.104.18.10:8001/v1/chat/completions',
+      {
+        model: "deepseek",
+        messages: [
+          {
+            role: "user",
+            content: originalPrompt
+          }
+        ],
+        stream: false
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'HUP7krphguth24m1+Vs6g6XoAkCC4LtlR5DhzhM9FkPCWvJTvHMK7PyGxYc+tPp3'
+        }
+      }
+    );
+    
+    // 从响应中提取优化后的提示词
+    if (response.data.choices && response.data.choices[0] && response.data.choices[0].message) {
+      const optimizedPrompt = response.data.choices[0].message.content;
+      console.log('DeepSeek 2.0优化后的提示词:', optimizedPrompt);
+      return optimizedPrompt;
+    }
+    
+    throw new Error('DeepSeek 2.0 API返回数据格式不正确');
+  } catch (error) {
+    console.error('DeepSeek 2.0提示词优化失败:', error);
+    throw new Error(`DeepSeek 2.0提示词优化失败: ${error.message}`);
+  }
+};

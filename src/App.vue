@@ -10,6 +10,7 @@ import {
   expandImage, 
   urlToFile,
   optimizePromptWithDeepSeek,
+  optimizePromptWithDeepSeek2,
   optimizePromptWithCoze
 } from './apis/imageGenerator';
 
@@ -23,7 +24,7 @@ const imageQuality = ref('standard'); // 图像质量设置
 
 // 提示词优化相关状态
 const isOptimizingPrompt = ref(false); // 是否正在优化提示词
-const promptOptimizer = ref('none'); // 优化器选择: none, deepseek, coze
+const promptOptimizer = ref('none'); // 优化器选择: none, deepseek, deepseek2, coze
 const cozeParams = reactive({
   title: '',
   subTitle: '',
@@ -590,6 +591,8 @@ const optimizePrompt = async () => {
     isOptimizingPrompt.value = true;
     error.value = promptOptimizer.value === 'deepseek' 
       ? '正在使用DeepSeek优化提示词，请稍候...' 
+      : promptOptimizer.value === 'deepseek2'
+      ? '正在使用DeepSeek 2.0优化提示词，请稍候...'
       : '正在使用Coze优化提示词，这可能需要较长时间（约15-30秒）...';
     
     // 保存原始提示词用于对比
@@ -598,6 +601,8 @@ const optimizePrompt = async () => {
     // 根据选择的优化器调用不同的API
     if (promptOptimizer.value === 'deepseek') {
       optimizedPrompt.value = await optimizePromptWithDeepSeek(prompt.value);
+    } else if (promptOptimizer.value === 'deepseek2') {
+      optimizedPrompt.value = await optimizePromptWithDeepSeek2(prompt.value);
     } else if (promptOptimizer.value === 'coze') {
       // 如果选择Coze但未显示参数对话框，则显示对话框
       if (!showCozeParamsDialog.value) {
@@ -907,6 +912,14 @@ const optimizePrompt = async () => {
                     :disabled="isLoading || isExpanding || isOptimizingPrompt"
                   >
                     DeepSeek
+                  </button>
+                  <button 
+                    class="optimizer-btn"
+                    :class="{ active: promptOptimizer === 'deepseek2' }"
+                    @click="promptOptimizer = 'deepseek2'"
+                    :disabled="isLoading || isExpanding || isOptimizingPrompt"
+                  >
+                    DeepSeek 2.0
                   </button>
                   <button 
                     class="optimizer-btn"
