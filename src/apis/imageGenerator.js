@@ -20,7 +20,7 @@ const API_CONFIG = {
 // 支持的模型和它们的分辨率
 export const AI_MODELS = {
   'jimeng-3.0': {
-    name: '即梦 3.0',
+    name: '梦龙',
     description: '中文模型|4张图',
     supportedSizes: ['1024x1024', '1664x936', '936x1664'],
     presetSizes: [
@@ -840,27 +840,27 @@ export const optimizePromptWithDeepSeek = async (originalPrompt) => {
 export const optimizePromptWithCoze = async (originalPrompt, params) => {
   try {
     // 验证必要参数
-    if (!params.title || !params.subTitle || !params.company || !params.industryKeywords) {
-      throw new Error('Coze优化需要提供所有必要参数：title、subTitle、company、industryKeywords');
+    if (!params.info) {
+      throw new Error('Coze优化需要提供info参数');
     }
     
     // 调用Coze工作流API
     const response = await axios.post(
       'https://api.coze.cn/v1/workflow/run',
       {
-        workflow_id: '7491234780052209674',
+        workflow_id: '7499022151862059058',
         parameters: {
-          title: params.title,
-          subTitle: params.subTitle,
-          company: params.company,
-          industryKeywords: params.industryKeywords,
-          originalPrompt // 添加原始提示词作为额外参数
+          info: params.info || originalPrompt,
+          company: params.company || '',
+          example: params.example || '',
+          Addition: params.Addition || '',
+          originalPrompt // 保留原始提示词作为额外参数
         }
       },
       {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer pat_59HJdzlPDfR7mEhel5hiRO4R2FLX5wj9fb3wyXaUPf546fPfPscIHyrB39HZE21S'
+          'Authorization': 'Bearer pat_gVIYbuXftNX6ByXm8jjyRYqluzBydYatrV1BAe1jAXgjUE9887C52SYNotLxTZoX'
         }
       }
     );
@@ -869,12 +869,12 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
     console.log('Coze API返回数据:', response.data);
     
     if (response.data.code === 0 && response.data.data) {
-      // 解析JSON字符串获取output内容
       try {
         const parsedData = JSON.parse(response.data.data);
-        if (parsedData && parsedData.output) {
-          console.log('解析后的提示词:', parsedData.output);
-          return parsedData.output;
+        if (parsedData && parsedData.data) {
+          console.log('解析后的提示词:', parsedData.data);
+          // 直接返回data字段的内容
+          return parsedData.data;
         }
       } catch (parseError) {
         console.error('解析Coze返回数据失败:', parseError);

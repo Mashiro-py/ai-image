@@ -26,10 +26,10 @@ const imageQuality = ref('standard'); // 图像质量设置
 const isOptimizingPrompt = ref(false); // 是否正在优化提示词
 const promptOptimizer = ref('none'); // 优化器选择: none, deepseek, deepseek2, coze
 const cozeParams = reactive({
-  title: '',
-  subTitle: '',
+  info: '',
   company: '',
-  industryKeywords: ''
+  example: null, // 用于存储上传的示例图片
+  Addition: ''
 });
 const showCozeParamsDialog = ref(false); // 是否显示Coze参数输入对话框
 const optimizedPrompt = ref(''); // 优化后的提示词
@@ -613,8 +613,8 @@ const optimizePrompt = async () => {
       }
       
       // 验证Coze参数
-      if (!cozeParams.title || !cozeParams.subTitle || !cozeParams.company || !cozeParams.industryKeywords) {
-        error.value = '请填写所有Coze必要参数';
+      if (!cozeParams.info) {
+        error.value = '请填写主要信息';
         isOptimizingPrompt.value = false;
         return;
       }
@@ -640,6 +640,36 @@ const optimizePrompt = async () => {
     error.value = err.message || '提示词优化失败';
   } finally {
     isOptimizingPrompt.value = false;
+  }
+};
+
+// 处理Coze示例图片上传
+const handleCozeExampleUpload = (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  console.log('上传示例图片:', file.type, file.size);
+  
+  // 检查文件类型
+  if (!file.type.startsWith('image/')) {
+    expandError.value = '请上传有效的图片文件';
+    return;
+  }
+  
+  try {
+    isLoading.value = true;
+    
+    // 保存文件对象并预览
+    cozeParams.example = file;
+    uploadedImage.value = URL.createObjectURL(file);
+    generatedImages.value = []; // 清除当前生成的图片
+    expandError.value = null; // 清除错误信息
+    console.log('示例图片已保存:', cozeParams.example);
+  } catch (err) {
+    console.error('示例图片处理错误:', err);
+    expandError.value = '示例图片处理失败: ' + err.message;
+  } finally {
+    isLoading.value = false;
   }
 };
 </script>
@@ -980,24 +1010,37 @@ const optimizePrompt = async () => {
             Coze工作流需要以下参数来优化您的提示词，生成更适合您需求的图像描述。处理时间可能较长，请耐心等待。
           </div>
           <div class="form-group">
-            <label>标题</label>
-            <input type="text" v-model="cozeParams.title" placeholder="例如：米其林轮胎" />
-            <div class="field-hint">主要产品或活动名称</div>
+            <label>主要信息 <span class="required">*</span></label>
+            <input type="text" v-model="cozeParams.info" placeholder="请输入主要提示词信息" />
+            <div class="field-hint">提示词的主要部分，必填</div>
           </div>
           <div class="form-group">
-            <label>副标题</label>
-            <input type="text" v-model="cozeParams.subTitle" placeholder="例如：米其林轮胎年会活动" />
-            <div class="field-hint">补充说明或活动具体描述</div>
-          </div>
-          <div class="form-group">
-            <label>公司</label>
-            <input type="text" v-model="cozeParams.company" placeholder="例如：米其林轮胎" />
+            <label>公司名称</label>
+            <input type="text" v-model="cozeParams.company" placeholder="请输入公司名称（选填）" />
             <div class="field-hint">相关公司或品牌名称</div>
           </div>
           <div class="form-group">
-            <label>行业关键词</label>
-            <input type="text" v-model="cozeParams.industryKeywords" placeholder="例如：轮胎" />
-            <div class="field-hint">与行业相关的关键词，可用逗号分隔多个词</div>
+            <label>示例图片</label>
+            <input 
+              type="file" 
+              accept="image/*" 
+              @change="handleCozeExampleUpload" 
+              class="file-input"
+            />
+            <div class="field-hint">上传参考图片（选填）</div>
+            <div v-if="cozeParams.example" class="example-preview">
+              <img :src="URL.createObjectURL(cozeParams.example)" alt="示例图片预览" />
+              <button @click="cozeParams.example = null" class="remove-example">移除</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>额外信息</label>
+            <textarea 
+              v-model="cozeParams.Addition" 
+              placeholder="请输入任何额外的相关信息（选填）"
+              rows="3"
+            ></textarea>
+            <div class="field-hint">补充说明或其他相关信息</div>
           </div>
         </div>
         <div class="modal-footer">
@@ -1005,7 +1048,7 @@ const optimizePrompt = async () => {
           <button 
             class="confirm-btn" 
             @click="optimizePrompt"
-            :disabled="!cozeParams.title || !cozeParams.subTitle || !cozeParams.company || !cozeParams.industryKeywords"
+            :disabled="!cozeParams.info"
           >
             确认并优化
           </button>
@@ -1948,5 +1991,61 @@ h1 {
   font-size: 0.75rem;
   font-style: normal;
   font-weight: bold;
+}
+
+.required {
+  color: #ff4444;
+  margin-left: 4px;
+}
+
+.file-input {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #f0f0f0;
+  cursor: pointer;
+}
+
+.example-preview {
+  margin-top: 0.5rem;
+  position: relative;
+  max-width: 200px;
+}
+
+.example-preview img {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.remove-example {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background-color: rgba(255, 68, 68, 0.8);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.remove-example:hover {
+  background-color: rgba(255, 68, 68, 1);
+}
+
+textarea {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #f0f0f0;
+  font-size: 1rem;
+  resize: vertical;
+  min-height: 80px;
 }
 </style>
