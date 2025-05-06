@@ -16,11 +16,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 获取请求路径，移除前导的/api/deepseek2
-    const path = req.url.replace(/^\/api\/deepseek2/, '');
+    // 获取请求路径
+    const urlParts = req.url.split('?');
+    const path = urlParts[0].replace(/^\/api\/deepseek2/, '');
+    const query = urlParts.length > 1 ? `?${urlParts[1]}` : '';
     
     // 构建目标URL
-    const targetUrl = `http://39.104.18.10:8001${path}`;
+    const targetUrl = `http://39.104.18.10:8001${path}${query}`;
     
     console.log(`代理DeepSeek2 API请求: ${targetUrl}`);
     

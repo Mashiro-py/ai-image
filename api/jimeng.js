@@ -16,11 +16,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 获取请求路径，移除前导的/api/jimeng
-    const path = req.url.replace(/^\/api\/jimeng/, '');
+    // 获取请求路径
+    const urlParts = req.url.split('?');
+    const path = urlParts[0].replace(/^\/api\/jimeng/, '');
+    const query = urlParts.length > 1 ? `?${urlParts[1]}` : '';
     
     // 构建目标URL
-    const targetUrl = `http://39.104.18.10:8000/v1${path}`;
+    const targetUrl = `http://39.104.18.10:8000/v1${path}${query}`;
     
     console.log(`代理即梦API请求: ${targetUrl}`);
     

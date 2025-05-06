@@ -17,31 +17,13 @@
       }
     }
   ],
-  "routes": [
-    {
-      "src": "/api/jimeng/(.*)",
-      "dest": "/api/jimeng.js"
-    },
-    {
-      "src": "/api/deepseek/(.*)",
-      "dest": "/api/deepseek.js"
-    },
-    {
-      "src": "/api/coze/(.*)",
-      "dest": "/api/coze.js"
-    },
-    {
-      "src": "/api/deepseek2/(.*)",
-      "dest": "/api/deepseek2.js"
-    },
-    {
-      "src": "/api/proxy",
-      "dest": "/api/proxy.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
+  "rewrites": [
+    { "source": "/api/jimeng/:path*", "destination": "/api/jimeng.js" },
+    { "source": "/api/deepseek/:path*", "destination": "/api/deepseek.js" },
+    { "source": "/api/coze/:path*", "destination": "/api/coze.js" },
+    { "source": "/api/deepseek2/:path*", "destination": "/api/deepseek2.js" },
+    { "source": "/api/proxy", "destination": "/api/proxy.js" },
+    { "source": "/(.*)", "destination": "/$1" }
   ],
   "headers": [
     {

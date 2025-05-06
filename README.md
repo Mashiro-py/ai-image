@@ -30,9 +30,17 @@
 
 在Vercel等平台部署时，使用以下解决方案：
 
-1. 使用Vercel的路由配置进行API代理
+1. 使用Vercel的`rewrites`配置进行API代理（注意：不要使用`routes`配置，会导致部署错误）
 2. 添加CORS头信息允许跨域请求
 3. 图片代理通过服务器端函数处理
+
+## Vercel部署注意事项
+
+在Vercel部署时，需要注意以下几点：
+
+1. 确保`vercel.json`文件中使用`rewrites`而不是`routes`配置，两者不能同时使用
+2. 如果遇到错误：`If 'rewrites', 'redirects', 'headers', 'cleanUrls' or 'trailingSlash' are used, then 'routes' cannot be present.`，请检查配置文件
+3. 确保API路由函数正确处理请求路径和查询参数
 
 ## 安装与运行
 

@@ -16,11 +16,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 获取请求路径，移除前导的/api/coze
-    const path = req.url.replace(/^\/api\/coze/, '');
+    // 获取请求路径
+    const urlParts = req.url.split('?');
+    const path = urlParts[0].replace(/^\/api\/coze/, '');
+    const query = urlParts.length > 1 ? `?${urlParts[1]}` : '';
     
     // 构建目标URL
-    const targetUrl = `https://api.coze.cn${path}`;
+    const targetUrl = `https://api.coze.cn${path}${query}`;
     
     console.log(`代理Coze API请求: ${targetUrl}`);
     

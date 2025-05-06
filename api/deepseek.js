@@ -16,11 +16,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 获取请求路径，移除前导的/api/deepseek
-    const path = req.url.replace(/^\/api\/deepseek/, '');
+    // 获取请求路径
+    const urlParts = req.url.split('?');
+    const path = urlParts[0].replace(/^\/api\/deepseek/, '');
+    const query = urlParts.length > 1 ? `?${urlParts[1]}` : '';
     
     // 构建目标URL
-    const targetUrl = `https://api.deepseek.com${path}`;
+    const targetUrl = `https://api.deepseek.com${path}${query}`;
     
     console.log(`代理DeepSeek API请求: ${targetUrl}`);
     
