@@ -12,8 +12,8 @@ const API_CONFIG = {
   defaultSize: '1024x1024', // 默认图像尺寸
   // 即梦API配置
   jimengApi: {
-    baseUrl: 'http://39.104.18.10:8000/v1/',
-    apiKey: 'd6fddc820557d57db836128519b9c46c'
+    baseUrl: '/api/jimeng/', // 使用相对路径，通过代理转发
+    apiKey: 'c14e91dae7fdadc29f684db39ff1ed90'
   }
 };
 
@@ -779,13 +779,79 @@ const resizeImage = (file, maxBytes, quality = 0.9) => {
  */
 export const urlToFile = async (url, filename) => {
   try {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    return new File([blob], filename, { type: blob.type });
+    // 检查是否为跨域URL
+    const isCrossDomain = url.startsWith('http') && !url.includes(window.location.hostname);
+    
+    if (isCrossDomain) {
+      // 对于跨域URL，使用代理进行请求
+      const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
+      const response = await fetch(proxyUrl);
+      const blob = await response.blob();
+      return new File([blob], filename, { type: blob.type });
+    } else {
+      // 对于同域URL，直接请求
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return new File([blob], filename, { type: blob.type });
+    }
   } catch (error) {
     console.error('图像URL转换为文件失败:', error);
-    throw new Error('图像URL转换为文件失败');
+    
+    // 如果代理请求失败，尝试使用canvas方法（仅适用于已经加载到页面的图像）
+    try {
+      console.log('尝试使用canvas方法获取图像数据...');
+      return await canvasMethodFallback(url, filename);
+    } catch (fallbackError) {
+      console.error('备用方法也失败:', fallbackError);
+      throw new Error('图像URL转换为文件失败，请尝试手动下载并上传图片');
+    }
   }
+};
+
+/**
+ * 使用Canvas作为获取图像数据的备用方法
+ * @param {string} url - 图像URL
+ * @param {string} filename - 保存的文件名
+ * @returns {Promise<File>} 返回File对象
+ */
+const canvasMethodFallback = (url, filename) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('无法从Canvas获取图像数据'));
+            return;
+          }
+          
+          const file = new File([blob], filename, { type: 'image/png' });
+          resolve(file);
+        }, 'image/png', 1.0);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    
+    img.onerror = () => reject(new Error('图像加载失败'));
+    
+    // 设置超时
+    setTimeout(() => reject(new Error('图像加载超时')), 10000);
+    
+    // 加载图像
+    img.src = url;
+  });
 };
 
 /**
@@ -797,7 +863,7 @@ export const optimizePromptWithDeepSeek = async (originalPrompt) => {
   try {
     // 调用DeepSeek API进行提示词优化
     const response = await axios.post(
-      'https://api.deepseek.com/v1/chat/completions',
+      '/api/deepseek/v1/chat/completions',
       {
         model: 'deepseek-chat',
         messages: [
@@ -846,7 +912,7 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
     
     // 调用Coze工作流API
     const response = await axios.post(
-      'https://api.coze.cn/v1/workflow/run',
+      '/api/coze/v1/workflow/run',
       {
         workflow_id: '7499022151862059058',
         parameters: {
@@ -960,7 +1026,7 @@ const generateJimengImage = async (prompt, options = {}) => {
 export const optimizePromptWithDeepSeek2 = async (originalPrompt) => {
   try {
     const response = await axios.post(
-      'http://39.104.18.10:8001/v1/chat/completions',
+      '/api/deepseek2/v1/chat/completions',
       {
         model: "deepseek",
         messages: [

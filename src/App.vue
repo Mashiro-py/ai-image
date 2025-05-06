@@ -595,17 +595,30 @@ const optimizePrompt = async () => {
       ? '正在使用DeepSeek 2.0优化提示词，请稍候...'
       : '正在使用Coze优化提示词，这可能需要较长时间（约15-30秒）...';
     
-    // 保存原始提示词用于对比
-    const originalPrompt = prompt.value;
-    
     // 根据选择的优化器调用不同的API
     if (promptOptimizer.value === 'deepseek') {
       optimizedPrompt.value = await optimizePromptWithDeepSeek(prompt.value);
+      prompt.value = optimizedPrompt.value;
+      error.value = '提示词已成功优化';
+      setTimeout(() => {
+        if (error.value === '提示词已成功优化') {
+          error.value = null;
+        }
+      }, 2000);
     } else if (promptOptimizer.value === 'deepseek2') {
       optimizedPrompt.value = await optimizePromptWithDeepSeek2(prompt.value);
+      prompt.value = optimizedPrompt.value;
+      error.value = '提示词已成功优化';
+      setTimeout(() => {
+        if (error.value === '提示词已成功优化') {
+          error.value = null;
+        }
+      }, 2000);
     } else if (promptOptimizer.value === 'coze') {
       // 如果选择Coze但未显示参数对话框，则显示对话框
       if (!showCozeParamsDialog.value) {
+        // 将当前输入框的内容保存到cozeParams.info中
+        cozeParams.info = prompt.value;
         showCozeParamsDialog.value = true;
         isOptimizingPrompt.value = false;
         error.value = null;
@@ -619,21 +632,40 @@ const optimizePrompt = async () => {
         return;
       }
       
-      // 调用Coze优化API
-      optimizedPrompt.value = await optimizePromptWithCoze(prompt.value, cozeParams);
-      showCozeParamsDialog.value = false; // 优化完成后关闭对话框
-    }
-    
-    // 优化成功后，将优化后的内容设置为当前提示词
-    if (optimizedPrompt.value) {
-      prompt.value = optimizedPrompt.value;
-      // 显示提示信息，告知用户提示词已被优化
-      error.value = '提示词已成功优化';
-      setTimeout(() => {
-        if (error.value === '提示词已成功优化') {
-          error.value = null;
+      try {
+        // 调用Coze优化API
+        const cozeResult = await optimizePromptWithCoze(cozeParams.info, cozeParams);
+        
+        // 确保我们得到了有效的优化结果
+        if (cozeResult && typeof cozeResult === 'string') {
+          // 更新提示词
+          prompt.value = cozeResult.trim();
+          optimizedPrompt.value = cozeResult.trim();
+          
+          // 关闭对话框
+          showCozeParamsDialog.value = false;
+          
+          // 显示临时提示
+          error.value = '提示词优化完成，正在生成图像...';
+          
+          // 等待DOM更新
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // 确保提示词已经更新到输入框
+          if (prompt.value === cozeResult.trim()) {
+            // 自动触发图像生成
+            await handleGenerateImage();
+          } else {
+            throw new Error('提示词更新失败');
+          }
+        } else {
+          throw new Error('未获取到有效的优化结果');
         }
-      }, 2000);
+      } catch (cozeError) {
+        console.error('Coze处理错误:', cozeError);
+        error.value = `Coze优化失败: ${cozeError.message}`;
+        showCozeParamsDialog.value = false;
+      }
     }
   } catch (err) {
     console.error('提示词优化失败:', err);
