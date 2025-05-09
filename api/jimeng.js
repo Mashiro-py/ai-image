@@ -32,7 +32,7 @@ export default async function handler(req, res) {
       ...req.headers,
       'host': '39.104.18.10:8000',
       'origin': 'http://39.104.18.10:8000',
-      'Authorization': `Bearer d6fddc820557d57db836128519b9c46c`
+      'Authorization': `Bearer d6fddc820557d57db836128519b9c46c,286dfb6c3240f2f0ac07894667dac7ee`
     };
     
     // 删除一些可能导致问题的头信息

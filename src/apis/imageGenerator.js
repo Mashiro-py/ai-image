@@ -909,7 +909,7 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
         
         // 发送上传请求
         const uploadResponse = await axios.post(
-          '/api/coze/v1/files/upload',
+          '/api/upload-to-coze',
           formData,
           {
             headers: {
