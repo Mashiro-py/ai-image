@@ -907,15 +907,22 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
         const formData = new FormData();
         formData.append('file', params.example);
         
+        // 添加时间戳防止缓存
+        const timestamp = new Date().getTime();
+        
         // 发送上传请求
+        console.log(`开始上传文件到 /api/upload-to-coze?t=${timestamp}`);
         const uploadResponse = await axios.post(
-          '/api/upload-to-coze',
+          `/api/upload-to-coze?t=${timestamp}`,
           formData,
           {
             headers: {
               'Content-Type': 'multipart/form-data',
               'Authorization': 'Bearer pat_gVIYbuXftNX6ByXm8jjyRYqluzBydYatrV1BAe1jAXgjUE9887C52SYNotLxTZoX'
-            }
+            },
+            timeout: 60000, // 增加超时时间到60秒
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity
           }
         );
         
@@ -929,10 +936,21 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
           // 按照Coze API要求的格式添加file_id
           requestParams.example = JSON.stringify({ file_id: fileId });
         } else {
-          throw new Error('文件上传失败: ' + (uploadResponse.data.msg || '未知错误'));
+          console.error('文件上传返回非预期格式:', uploadResponse.data);
+          throw new Error('文件上传失败: ' + (uploadResponse.data.msg || JSON.stringify(uploadResponse.data)));
         }
       } catch (uploadError) {
         console.error('示例图片上传失败:', uploadError);
+        console.error('上传错误详情:', uploadError.response ? uploadError.response.data : uploadError.message);
+        
+        // 显示完整错误信息
+        const errorDetails = uploadError.response 
+          ? `状态码: ${uploadError.response.status}, 数据: ${JSON.stringify(uploadError.response.data)}`
+          : uploadError.message;
+        
+        console.error('完整错误详情:', errorDetails);
+        
+        alert(`图片上传失败，但将继续尝试生成文本(无图片参考)。错误: ${uploadError.message}`);
         // 继续请求，但不包含图片
       }
     } else {
@@ -952,7 +970,8 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer pat_gVIYbuXftNX6ByXm8jjyRYqluzBydYatrV1BAe1jAXgjUE9887C52SYNotLxTZoX'
-        }
+        },
+        timeout: 60000 // 增加超时时间到60秒
       }
     );
     
@@ -977,7 +996,18 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
     return originalPrompt;
   } catch (error) {
     console.error('Coze提示词优化失败:', error);
-    throw new Error(`Coze提示词优化失败: ${error.message}`);
+    console.error('错误详情:', error.response ? error.response.data : error.message);
+    
+    // 显示完整错误信息以便调试
+    const errorDetails = error.response 
+      ? `状态码: ${error.response.status}, 数据: ${JSON.stringify(error.response.data)}`
+      : error.message;
+    
+    console.error('完整错误详情:', errorDetails);
+    
+    // 使用原始提示词而不是抛出错误，提高用户体验
+    alert(`提示词优化失败，将使用原始提示词。错误: ${error.message}`);
+    return originalPrompt;
   }
 };
 
