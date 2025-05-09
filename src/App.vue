@@ -747,12 +747,12 @@ const handleCozeExampleUpload = (event) => {
   try {
     isLoading.value = true;
     
-    // 保存文件对象并预览
+    // 只保存文件对象，不使用URL.createObjectURL预览
     cozeParams.example = file;
-    uploadedImage.value = URL.createObjectURL(file);
-    generatedImages.value = []; // 清除当前生成的图片
+    
+    // 清除状态
     expandError.value = null; // 清除错误信息
-    console.log('示例图片已保存:', cozeParams.example);
+    console.log('示例图片已保存:', cozeParams.example.name, cozeParams.example.size);
   } catch (err) {
     console.error('示例图片处理错误:', err);
     expandError.value = '示例图片处理失败: ' + err.message;

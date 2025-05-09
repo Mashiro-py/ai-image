@@ -890,18 +890,63 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
       throw new Error('Coze优化需要提供info参数');
     }
     
+    // 准备请求参数
+    const requestParams = {
+      info: params.info || originalPrompt,
+      company: params.company || '',
+      Addition: params.Addition || '',
+      originalPrompt // 保留原始提示词作为额外参数
+    };
+    
+    // 如果有示例图片，上传并获取file_id
+    if (params.example && params.example instanceof File) {
+      try {
+        console.log('正在上传示例图片到Coze...', params.example.name, params.example.type, params.example.size);
+        
+        // 创建FormData用于文件上传
+        const formData = new FormData();
+        formData.append('file', params.example);
+        
+        // 发送上传请求
+        const uploadResponse = await axios.post(
+          '/api/coze/v1/files/upload',
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+              'Authorization': 'Bearer pat_gVIYbuXftNX6ByXm8jjyRYqluzBydYatrV1BAe1jAXgjUE9887C52SYNotLxTZoX'
+            }
+          }
+        );
+        
+        console.log('Coze文件上传响应:', uploadResponse.data);
+        
+        // 检查返回的结果
+        if (uploadResponse.data.code === 0 && uploadResponse.data.data && uploadResponse.data.data.id) {
+          const fileId = uploadResponse.data.data.id;
+          console.log('示例图片上传成功，file_id:', fileId);
+          
+          // 按照Coze API要求的格式添加file_id
+          requestParams.example = JSON.stringify({ file_id: fileId });
+        } else {
+          throw new Error('文件上传失败: ' + (uploadResponse.data.msg || '未知错误'));
+        }
+      } catch (uploadError) {
+        console.error('示例图片上传失败:', uploadError);
+        // 继续请求，但不包含图片
+      }
+    } else {
+      console.log('未提供示例图片或示例图片不是有效的文件对象');
+    }
+    
+    console.log('Coze工作流请求参数:', requestParams);
+    
     // 调用Coze工作流API
     const response = await axios.post(
       '/api/coze/v1/workflow/run',
       {
         workflow_id: '7499022151862059058',
-        parameters: {
-          info: params.info || originalPrompt,
-          company: params.company || '',
-          example: params.example || '',
-          Addition: params.Addition || '',
-          originalPrompt // 保留原始提示词作为额外参数
-        }
+        parameters: requestParams
       },
       {
         headers: {
