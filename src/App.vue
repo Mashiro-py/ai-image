@@ -14,13 +14,49 @@ import {
   optimizePromptWithCoze
 } from './apis/imageGenerator';
 
+// 错误弹窗相关状态
+const showErrorDialog = ref(false);
+const errorDialogMessage = ref('');
+const errorDialogTitle = ref('错误');
+const isErrorConfirmDialog = ref(false);
+const errorConfirmCallback = ref(null);
+
+// 显示错误弹窗的方法
+const showError = (message, title = '错误') => {
+  errorDialogMessage.value = message;
+  errorDialogTitle.value = title;
+  isErrorConfirmDialog.value = false;
+  showErrorDialog.value = true;
+};
+
+// 显示确认弹窗的方法
+const showConfirm = (message, callback, title = '确认') => {
+  errorDialogMessage.value = message;
+  errorDialogTitle.value = title;
+  isErrorConfirmDialog.value = true;
+  errorConfirmCallback.value = callback;
+  showErrorDialog.value = true;
+};
+
+// 确认按钮回调
+const handleErrorConfirm = () => {
+  if (isErrorConfirmDialog.value && errorConfirmCallback.value) {
+    errorConfirmCallback.value();
+  }
+  showErrorDialog.value = false;
+};
+
 // 图像生成相关状态
 const prompt = ref('');
 const isLoading = ref(false);
 const error = ref(null);
 const apiKeySet = ref(true); // 默认已设置API Key
 const selectedModel = ref(getCurrentModel()); // 当前选中的模型
-const imageQuality = ref('standard'); // 图像质量设置
+
+// 确保模型是'jimeng-3.0'
+if (selectedModel.value !== 'jimeng-3.0') {
+  selectedModel.value = 'jimeng-3.0';
+}
 
 // 提示词优化相关状态
 const isOptimizingPrompt = ref(false); // 是否正在优化提示词
@@ -50,7 +86,7 @@ const maxImageCount = computed(() => 4); // 允许所有模型都可以选择最
 const chatHistory = ref([]);
 
 // 预设的尺寸选项，基于当前选择的模型动态更新
-const presetSizes = ref(AI_MODELS[selectedModel.value].presetSizes);
+const presetSizes = ref(AI_MODELS[selectedModel.value]?.presetSizes || []);
 
 // 初始化画布尺寸
 const initialCanvasSize = () => {
@@ -75,7 +111,6 @@ const initialCanvasSize = () => {
 const canvasSettings = reactive({
   ...initialCanvasSize(),
   aspectRatio: '1:1',
-  quality: 5,
   model: selectedModel.value
 });
 
@@ -259,7 +294,7 @@ const currentSession = ref(null);
 // 生成图像的方法
 const handleGenerateImage = async () => {
   if (!prompt.value.trim()) {
-    error.value = '请输入图像描述';
+    showError('请输入图像描述');
     return;
   }
   
@@ -276,10 +311,16 @@ const handleGenerateImage = async () => {
       settings: { ...canvasSettings }
     };
     
-    // 根据所选模型确定生成的逻辑
-    if (selectedModel.value === 'jimeng-3.0') {
-      // 即梦API总是返回4张图片
-      error.value = `正在使用即梦API生成图片，这可能需要较长时间...`;
+    // 确保当前选中的模型有效
+    if (!AI_MODELS[selectedModel.value]) {
+      console.warn(`模型 ${selectedModel.value} 不存在，使用默认模型 jimeng-3.0`);
+      selectedModel.value = 'jimeng-3.0';
+    }
+    
+    // 使用CW1.0模型生成图片
+    error.value = `正在使用CW1.0生成图片，这可能需要较长时间...`;
+    
+    try {
       const result = await generateImage(prompt.value, {
         ...canvasSettings,
         model: selectedModel.value
@@ -290,36 +331,34 @@ const handleGenerateImage = async () => {
       if (result.additionalImages && Array.isArray(result.additionalImages)) {
         session.images.push(...result.additionalImages);
       }
-    } else {
-      // 其他模型（DALL-E等）的原有逻辑
-      // 根据用户选择的数量生成图片
-      const count = Math.min(imageCount.value, 4);
-      console.log(`生成${count}张图片，模型: ${selectedModel.value}`);
       
-      // 依次生成指定数量的图片
-      for (let i = 0; i < count; i++) {
-        // 显示进度信息
-        error.value = `正在生成第 ${i+1}/${count} 张图片${imageQuality.value === 'hd' ? '（高质量模式，需要较长时间）' : ''}...`;
-        const result = await generateImage(prompt.value, {
-          ...canvasSettings,
-          imageQuality: imageQuality.value
-        });
-        session.images.push(result.imageUrl);
+      // 清除进度信息
+      error.value = null;
+      
+      // 更新当前会话和历史记录
+      currentSession.value = session;
+      chatHistory.value.unshift(session); // 添加到历史记录的开头
+      
+      // 更新生成的图片列表
+      generatedImages.value = session.images;
+      uploadedImage.value = null; // 清除已上传的图片
+      imageFile.value = null;
+    } catch (apiError) {
+      console.error('API调用失败:', apiError);
+      
+      // 检测是否是网络连接问题
+      if (apiError.message.includes('服务器未响应') || apiError.message.includes('连接') || apiError.message.includes('timeout')) {
+        showConfirm('无法连接到CW1.0服务器，请检查网络连接后重试。是否重试？', handleGenerateImage, 'API连接失败');
+      } else {
+        showError(`CW1.0图像生成失败: ${apiError.message}`);
       }
+      throw apiError; // 继续传播错误以便catch捕获
     }
-    
-    // 清除进度信息
-    error.value = null;
-    
-    // 更新当前会话和历史记录
-    currentSession.value = session;
-    chatHistory.value.unshift(session); // 添加到历史记录的开头
-    
-    // 更新生成的图片列表
-    generatedImages.value = session.images;
-    uploadedImage.value = null; // 清除已上传的图片
-    imageFile.value = null;
   } catch (err) {
+    console.error('图像生成失败:', err);
+    if (!showErrorDialog.value) { // 如果没有显示特定API错误弹窗，则显示一般错误
+      showError('图像生成失败: ' + err.message);
+    }
     error.value = '图像生成失败: ' + err.message;
   } finally {
     isLoading.value = false;
@@ -476,10 +515,17 @@ const downloadGeneratedImage = async (imageUrl) => {
 
 // 监听模型变化，更新预设尺寸
 watch(selectedModel, (newModel) => {
+  // 确保所选模型存在
+  if (!AI_MODELS[newModel]) {
+    console.warn(`模型 ${newModel} 不存在，使用默认模型 jimeng-3.0`);
+    selectedModel.value = 'jimeng-3.0';
+    return;
+  }
+  
   // 更新模型设置
   setModel(newModel);
   // 更新预设尺寸
-  presetSizes.value = AI_MODELS[newModel].presetSizes;
+  presetSizes.value = AI_MODELS[newModel]?.presetSizes || [];
   // 更新画布设置中的模型
   canvasSettings.model = newModel;
   
@@ -490,15 +536,17 @@ watch(selectedModel, (newModel) => {
   
   // 如果当前尺寸在新模型中不存在，则切换到默认尺寸
   const currentSize = { width: canvasSettings.width, height: canvasSettings.height };
-  const sizeExists = presetSizes.value.some(size => 
-    size.width === currentSize.width && size.height === currentSize.height
-  );
+  const defaultSize = presetSizes.value[0];
   
-  if (!sizeExists) {
-    // 默认使用第一个预设尺寸
-    const defaultSize = presetSizes.value[0];
-    canvasSettings.width = defaultSize.width;
-    canvasSettings.height = defaultSize.height;
+  if (presetSizes.value.length > 0) {
+    const sizeExists = presetSizes.value.some(size => 
+      size.width === currentSize.width && size.height === currentSize.height
+    );
+    
+    if (!sizeExists && defaultSize) {
+      canvasSettings.width = defaultSize.width;
+      canvasSettings.height = defaultSize.height;
+    }
   }
 });
 
@@ -534,16 +582,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
 });
 
-// 可用的宽高比选项
+// 可用的宽高比选项，根据CW1.0支持的预设尺寸
 const aspectRatios = [
-  { name: '1:1', value: '1:1' },
-  { name: '4:3', value: '4:3' },
-  { name: '3:2', value: '3:2' },
-  { name: '16:9', value: '16:9' },
-  { name: '21:9', value: '21:9' },
-  { name: '3:4', value: '3:4' },
-  { name: '2:3', value: '2:3' },
-  { name: '9:16', value: '9:16' }
+  { name: '1:1', value: '1:1' },   // 1024x1024
+  { name: '16:9', value: '16:9' }, // 1664x936
+  { name: '9:16', value: '9:16' }  // 936x1664
 ];
 
 // 更改宽高比的方法
@@ -583,7 +626,7 @@ const findGCD = (a, b) => {
 // 优化提示词方法
 const optimizePrompt = async () => {
   if (!prompt.value.trim()) {
-    error.value = '请先输入需要优化的提示词';
+    showError('请先输入需要优化的提示词');
     return;
   }
   
@@ -593,29 +636,39 @@ const optimizePrompt = async () => {
       ? '正在使用DeepSeek优化提示词，请稍候...' 
       : promptOptimizer.value === 'deepseek2'
       ? '正在使用DeepSeek 2.0优化提示词，请稍候...'
-      : '正在使用Coze优化提示词，这可能需要较长时间（约15-30秒）...';
+      : '正在使用CW1.0优化提示词，这可能需要较长时间（约15-30秒）...';
     
     // 根据选择的优化器调用不同的API
     if (promptOptimizer.value === 'deepseek') {
-      optimizedPrompt.value = await optimizePromptWithDeepSeek(prompt.value);
-      prompt.value = optimizedPrompt.value;
-      error.value = '提示词已成功优化';
-      setTimeout(() => {
-        if (error.value === '提示词已成功优化') {
-          error.value = null;
-        }
-      }, 2000);
+      try {
+        optimizedPrompt.value = await optimizePromptWithDeepSeek(prompt.value);
+        prompt.value = optimizedPrompt.value;
+        error.value = '提示词已成功优化';
+        setTimeout(() => {
+          if (error.value === '提示词已成功优化') {
+            error.value = null;
+          }
+        }, 2000);
+      } catch (apiError) {
+        showError(`DeepSeek优化失败: ${apiError.message}`, 'API错误');
+        throw apiError;
+      }
     } else if (promptOptimizer.value === 'deepseek2') {
-      optimizedPrompt.value = await optimizePromptWithDeepSeek2(prompt.value);
-      prompt.value = optimizedPrompt.value;
-      error.value = '提示词已成功优化';
-      setTimeout(() => {
-        if (error.value === '提示词已成功优化') {
-          error.value = null;
-        }
-      }, 2000);
+      try {
+        optimizedPrompt.value = await optimizePromptWithDeepSeek2(prompt.value);
+        prompt.value = optimizedPrompt.value;
+        error.value = '提示词已成功优化';
+        setTimeout(() => {
+          if (error.value === '提示词已成功优化') {
+            error.value = null;
+          }
+        }, 2000);
+      } catch (apiError) {
+        showError(`DeepSeek 2.0优化失败: ${apiError.message}`, 'API错误');
+        throw apiError;
+      }
     } else if (promptOptimizer.value === 'coze') {
-      // 如果选择Coze但未显示参数对话框，则显示对话框
+      // 如果选择CW1.0但未显示参数对话框，则显示对话框
       if (!showCozeParamsDialog.value) {
         // 将当前输入框的内容保存到cozeParams.info中
         cozeParams.info = prompt.value;
@@ -625,15 +678,21 @@ const optimizePrompt = async () => {
         return;
       }
       
-      // 验证Coze参数
+      // 验证CW1.0参数
       if (!cozeParams.info) {
-        error.value = '请填写主要信息';
+        showError('请填写主要信息');
         isOptimizingPrompt.value = false;
         return;
       }
       
       try {
-        // 调用Coze优化API
+        // 先关闭对话框
+        showCozeParamsDialog.value = false;
+        
+        // 显示处理中状态
+        error.value = '正在使用CW1.0优化提示词并生成图像，请稍候...';
+        
+        // 调用CW1.0优化API
         const cozeResult = await optimizePromptWithCoze(cozeParams.info, cozeParams);
         
         // 确保我们得到了有效的优化结果
@@ -641,12 +700,6 @@ const optimizePrompt = async () => {
           // 更新提示词
           prompt.value = cozeResult.trim();
           optimizedPrompt.value = cozeResult.trim();
-          
-          // 关闭对话框
-          showCozeParamsDialog.value = false;
-          
-          // 显示临时提示
-          error.value = '提示词优化完成，正在生成图像...';
           
           // 等待DOM更新
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -662,13 +715,16 @@ const optimizePrompt = async () => {
           throw new Error('未获取到有效的优化结果');
         }
       } catch (cozeError) {
-        console.error('Coze处理错误:', cozeError);
-        error.value = `Coze优化失败: ${cozeError.message}`;
-        showCozeParamsDialog.value = false;
+        console.error('CW1.0处理错误:', cozeError);
+        showError(`CW1.0优化失败: ${cozeError.message}`, 'API错误');
+        error.value = `CW1.0优化失败: ${cozeError.message}`;
       }
     }
   } catch (err) {
     console.error('提示词优化失败:', err);
+    if (!showErrorDialog.value) { // 如果没有显示特定API错误弹窗，则显示一般错误
+      showError(err.message || '提示词优化失败');
+    }
     error.value = err.message || '提示词优化失败';
   } finally {
     isOptimizingPrompt.value = false;
@@ -710,7 +766,7 @@ const handleCozeExampleUpload = (event) => {
   <div class="app-container">
     <!-- 顶部标题 -->
   <header>
-      <h1>AI 图像聊天生成器</h1>
+      <h1>设计秘书</h1>
   </header>
 
     <div class="main-content">
@@ -721,9 +777,9 @@ const handleCozeExampleUpload = (event) => {
           <div class="model-selector">
             <div 
               v-for="(modelInfo, modelId) in AI_MODELS" 
-              :key="modelId"
-              class="model-item"
-              :class="{ active: selectedModel === modelId }"
+              :key="modelId" 
+              class="model-item" 
+              :class="{ active: selectedModel === modelId }" 
               @click="selectedModel = modelId"
             >
               <img src="./assets/images/model-icon.png" alt="模型图标" />
@@ -735,7 +791,7 @@ const handleCozeExampleUpload = (event) => {
           </div>
           
           <!-- 添加DALL-E-3质量选择按钮 -->
-          <div v-if="selectedModel === 'dall-e-3'" class="quality-selector">
+          <!-- <div v-if="selectedModel === 'dall-e-3'" class="quality-selector">
             <h3>图像质量</h3>
             <div class="quality-buttons">
               <button 
@@ -753,29 +809,15 @@ const handleCozeExampleUpload = (event) => {
                 高清质量
               </button>
             </div>
-          </div>
+          </div> -->
           
           <!-- 添加即梦API特定提示 -->
-          <div v-if="selectedModel === 'jimeng-3.0'" class="jimeng-info">
+          <!-- <div v-if="selectedModel === 'jimeng-3.0'" class="jimeng-info">
             <div class="info-message">
               <i class="info-icon">i</i>
-              <span>即梦API将生成4张图片，无法调整数量</span>
+              <span>CW1.0将生成4张图片，无法调整数量</span>
             </div>
-          </div>
-        </div>
-        
-        <div class="section">
-          <h2>图像质量</h2>
-          <div class="slider-container">
-            <input 
-              type="range" 
-              min="1" 
-              max="10" 
-              v-model="canvasSettings.quality" 
-              class="quality-slider"
-            />
-            <span class="slider-value">{{ canvasSettings.quality }}</span>
-          </div>
+          </div> -->
         </div>
         
         <div class="section">
@@ -818,7 +860,7 @@ const handleCozeExampleUpload = (event) => {
           <div v-if="isLoading || isExpanding" class="loading-overlay">
             <div class="spinner"></div>
             <p v-if="isLoading">
-              {{ imageQuality === 'hd' ? '正在生成高质量图片，这可能需要较长时间...' : '生成中，请稍候...' }}
+              生成中，请稍候...
             </p>
             <p v-else>扩展中，请稍候...</p>
           </div>
@@ -989,7 +1031,7 @@ const handleCozeExampleUpload = (event) => {
                     @click="promptOptimizer = 'coze'"
                     :disabled="isLoading || isExpanding || isOptimizingPrompt"
                   >
-                    Coze
+                    CW1.0
                   </button>
                   <button 
                     class="optimize-btn"
@@ -1010,7 +1052,7 @@ const handleCozeExampleUpload = (event) => {
                     :class="['count-btn', { active: imageCount === n }]"
                     @click="imageCount = n"
                     :disabled="isLoading || isExpanding || selectedModel === 'jimeng-3.0'"
-                    :title="selectedModel === 'jimeng-3.0' ? '即梦API固定生成4张图片' : ''"
+                    :title="selectedModel === 'jimeng-3.0' ? 'CW1.0固定生成4张图片' : ''"
                   >
                     {{ n }}
                   </button>
@@ -1034,12 +1076,12 @@ const handleCozeExampleUpload = (event) => {
     <div v-if="showCozeParamsDialog" class="modal-overlay">
       <div class="modal-container">
         <div class="modal-header">
-          <h3>请输入Coze优化所需参数</h3>
+          <h3>请输入CW1.0优化所需参数</h3>
           <button class="modal-close" @click="showCozeParamsDialog = false">×</button>
         </div>
         <div class="modal-body">
           <div class="dialog-description">
-            Coze工作流需要以下参数来优化您的提示词，生成更适合您需求的图像描述。处理时间可能较长，请耐心等待。
+            CW1.0工作流需要以下参数来优化您的提示词，生成更适合您需求的图像描述。处理时间可能较长，请耐心等待。
           </div>
           <div class="form-group">
             <label>主要信息 <span class="required">*</span></label>
@@ -1083,6 +1125,28 @@ const handleCozeExampleUpload = (event) => {
             :disabled="!cozeParams.info"
           >
             确认并优化
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 错误提示对话框 -->
+    <div v-if="showErrorDialog" class="modal-overlay">
+      <div class="modal-container error-dialog">
+        <div class="modal-header">
+          <h3>{{ errorDialogTitle }}</h3>
+          <button class="modal-close" @click="showErrorDialog = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="error-message">{{ errorDialogMessage }}</div>
+        </div>
+        <div class="modal-footer">
+          <button v-if="isErrorConfirmDialog" class="cancel-btn" @click="showErrorDialog = false">取消</button>
+          <button 
+            class="confirm-btn" 
+            @click="isErrorConfirmDialog ? handleErrorConfirm() : showErrorDialog = false"
+          >
+            {{ isErrorConfirmDialog ? '确认' : '关闭' }}
           </button>
         </div>
       </div>
@@ -1190,41 +1254,6 @@ h1 {
   font-size: 0.8rem;
   color: #888;
   margin-top: 0.35rem;
-}
-
-/* 图像质量滑块样式 */
-.slider-container {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem 0;
-}
-
-.quality-slider {
-  flex: 1;
-  -webkit-appearance: none;
-  height: 6px;
-  background-color: #444;
-  border-radius: 3px;
-}
-
-.quality-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  background-color: #00a4e4;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-.quality-slider:disabled {
-  opacity: 0.5;
-}
-
-.slider-value {
-  margin-left: 1rem;
-  min-width: 2rem;
-  text-align: center;
-  font-size: 1rem;
 }
 
 /* 图像比例网格样式 */
@@ -2079,5 +2108,30 @@ textarea {
   font-size: 1rem;
   resize: vertical;
   min-height: 80px;
+}
+
+/* 错误对话框样式 */
+.error-dialog {
+  max-width: 450px;
+}
+
+.error-message {
+  color: #f0f0f0;
+  line-height: 1.5;
+  font-size: 1rem;
+  padding: 0.5rem 0;
+}
+
+.error-dialog .modal-header {
+  background-color: #d32f2f;
+}
+
+.error-dialog .confirm-btn {
+  background-color: #d32f2f;
+  border-color: #d32f2f;
+}
+
+.error-dialog .confirm-btn:hover {
+  background-color: #b71c1c;
 }
 </style>
