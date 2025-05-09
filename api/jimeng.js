@@ -32,7 +32,7 @@ export default async function handler(req, res) {
       ...req.headers,
       'host': '39.104.18.10:8000',
       'origin': 'http://39.104.18.10:8000',
-      'Authorization': `Bearer d6fddc820557d57db836128519b9c46c,286dfb6c3240f2f0ac07894667dac7ee`
+      'Authorization': `Bearer 286dfb6c3240f2f0ac07894667dac7ee,8324211718f83d71dce67f4d63132e27,0ddb2442c5ed08d2d8344708c955537e,ad26aaf1ecf1c1b6d555eb237e62d3b3,a45636f06f42b1d294c884ce6aba8f89`
     };
     
     // 删除一些可能导致问题的头信息
