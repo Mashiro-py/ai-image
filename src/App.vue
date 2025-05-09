@@ -1103,7 +1103,10 @@ const handleCozeExampleUpload = (event) => {
             />
             <div class="field-hint">上传参考图片（选填）</div>
             <div v-if="cozeParams.example" class="example-preview">
-              <img :src="URL.createObjectURL(cozeParams.example)" alt="示例图片预览" />
+              <div class="example-image-placeholder">
+                <span class="image-name">{{ cozeParams.example.name }}</span>
+                <span class="image-size">({{ Math.round(cozeParams.example.size / 1024) }} KB)</span>
+              </div>
               <button @click="cozeParams.example = null" class="remove-example">移除</button>
             </div>
           </div>
@@ -2072,13 +2075,32 @@ h1 {
 .example-preview {
   margin-top: 0.5rem;
   position: relative;
-  max-width: 200px;
+  max-width: 100%;
 }
 
-.example-preview img {
-  width: 100%;
-  height: auto;
+.example-image-placeholder {
+  background-color: #333;
   border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 80px;
+}
+
+.image-name {
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  color: #f0f0f0;
+  word-break: break-all;
+  text-align: center;
+}
+
+.image-size {
+  color: #aaa;
+  font-size: 0.8rem;
 }
 
 .remove-example {
