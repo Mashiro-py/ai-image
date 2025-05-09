@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Coze文件上传测试</title>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    button {
+      padding: 10px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      background-color: #f9f9f9;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>Coze文件上传测试</h1>
+  
+  <div class="form-group">
+    <label for="file">选择要上传的文件:</label>
+    <input type="file" id="file" accept="image/*">
+  </div>
+  
+  <div class="form-group">
+    <label>上传方式:</label>
+    <button id="uploadCustom">使用自定义端点上传</button>
+    <button id="uploadDirect">使用标准Coze API上传</button>
+  </div>
+  
+  <div id="result">结果将显示在这里...</div>
+  
+  <script>
+    document.getElementById('uploadCustom').addEventListener('click', () => {
+      uploadFile('/api/upload-to-coze');
+    });
+    
+    document.getElementById('uploadDirect').addEventListener('click', () => {
+      uploadFile('/api/coze/v1/files/upload');
+    });
+    
+    async function uploadFile(endpoint) {
+      const fileInput = document.getElementById('file');
+      const resultDiv = document.getElementById('result');
+      
+      if (!fileInput.files || fileInput.files.length === 0) {
+        resultDiv.textContent = '请先选择文件';
+        return;
+      }
+      
+      const file = fileInput.files[0];
+      resultDiv.textContent = `正在上传文件: ${file.name} (${file.type}, ${file.size} 字节)...\n端点: ${endpoint}`;
+      
+      try {
+        // 创建FormData
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // 发送请求
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer pat_gVIYbuXftNX6ByXm8jjyRYqluzBydYatrV1BAe1jAXgjUE9887C52SYNotLxTZoX'
+          },
+          body: formData
+        });
+        
+        // 检查响应状态
+        if (!response.ok) {
+          throw new Error(`HTTP错误: ${response.status}`);
+        }
+        
+        // 解析响应
+        const data = await response.json();
+        resultDiv.textContent += `\n\n请求成功，状态: ${response.status} ${response.statusText}\n\n响应数据:\n${JSON.stringify(data, null, 2)}`;
+      } catch (error) {
+        resultDiv.textContent += `\n\n上传失败: ${error.message}`;
+        console.error('上传错误:', error);
+      }
+    }
+  </script>
+</body>
+</html> 

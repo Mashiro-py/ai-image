@@ -878,6 +878,59 @@ export const optimizePromptWithDeepSeek = async (originalPrompt) => {
 };
 
 /**
+ * 创建一个尝试不同端点上传文件的函数
+ * @param {File} file - 要上传的文件
+ * @returns {Promise<string>} 返回file_id
+ */
+const uploadFileWithFallback = async (file) => {
+  console.log('正在尝试上传文件:', file.name, file.type, file.size);
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  // 尝试所有可能的端点
+  const endpoints = [
+    '/api/upload-to-coze',
+    '/api/coze/v1/files/upload'
+  ];
+  
+  let lastError = null;
+  
+  for (const endpoint of endpoints) {
+    try {
+      console.log(`尝试使用端点 ${endpoint} 上传文件...`);
+      
+      const response = await axios.post(
+        endpoint,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'Authorization': 'Bearer pat_gVIYbuXftNX6ByXm8jjyRYqluzBydYatrV1BAe1jAXgjUE9887C52SYNotLxTZoX'
+          },
+          timeout: 60000 // 60秒超时
+        }
+      );
+      
+      console.log(`${endpoint} 上传响应:`, response.data);
+      
+      if (response.data && response.data.code === 0 && response.data.data && response.data.data.id) {
+        console.log(`上传成功，获取到file_id: ${response.data.data.id}`);
+        return response.data.data.id;
+      } else {
+        console.warn(`${endpoint} 响应格式不正确:`, response.data);
+      }
+    } catch (error) {
+      console.error(`${endpoint} 上传失败:`, error);
+      lastError = error;
+    }
+  }
+  
+  // 如果所有尝试都失败了，抛出最后一个错误
+  throw lastError || new Error('所有上传尝试均失败');
+};
+
+/**
  * 使用Coze工作流API优化提示词
  * @param {string} originalPrompt - 原始提示词
  * @param {Object} params - Coze所需参数
@@ -901,39 +954,17 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
     // 如果有示例图片，上传并获取file_id
     if (params.example && params.example instanceof File) {
       try {
-        console.log('正在上传示例图片到Coze...', params.example.name, params.example.type, params.example.size);
+        // 使用带有自动重试的上传功能
+        const fileId = await uploadFileWithFallback(params.example);
         
-        // 创建FormData用于文件上传
-        const formData = new FormData();
-        formData.append('file', params.example);
-        
-        // 发送上传请求
-        const uploadResponse = await axios.post(
-          '/api/upload-to-coze',
-          formData,
-          {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-              'Authorization': 'Bearer pat_gVIYbuXftNX6ByXm8jjyRYqluzBydYatrV1BAe1jAXgjUE9887C52SYNotLxTZoX'
-            }
-          }
-        );
-        
-        console.log('Coze文件上传响应:', uploadResponse.data);
-        
-        // 检查返回的结果
-        if (uploadResponse.data.code === 0 && uploadResponse.data.data && uploadResponse.data.data.id) {
-          const fileId = uploadResponse.data.data.id;
-          console.log('示例图片上传成功，file_id:', fileId);
-          
-          // 按照Coze API要求的格式添加file_id
-          requestParams.example = JSON.stringify({ file_id: fileId });
-        } else {
-          throw new Error('文件上传失败: ' + (uploadResponse.data.msg || '未知错误'));
-        }
+        // 按照Coze API要求的格式添加file_id
+        requestParams.example = JSON.stringify({ file_id: fileId });
       } catch (uploadError) {
-        console.error('示例图片上传失败:', uploadError);
-        // 继续请求，但不包含图片
+        console.error('示例图片上传失败，将继续但不包含图片:', uploadError);
+        
+        if (typeof alert === 'function') {
+          alert('示例图片上传失败，将继续优化提示词但不包含示例图片。');
+        }
       }
     } else {
       console.log('未提供示例图片或示例图片不是有效的文件对象');

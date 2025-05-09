@@ -23,6 +23,7 @@
     { "source": "/api/coze/:path*", "destination": "/api/coze.js" },
     { "source": "/api/deepseek2/:path*", "destination": "/api/deepseek2.js" },
     { "source": "/api/proxy", "destination": "/api/proxy.js" },
+    { "source": "/api/upload-to-coze", "destination": "/api/upload-to-coze.js" },
     { "source": "/(.*)", "destination": "/$1" }
   ],
   "headers": [
