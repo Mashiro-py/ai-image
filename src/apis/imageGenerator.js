@@ -13,7 +13,7 @@ const API_CONFIG = {
   // 即梦API配置
   jimengApi: {
     baseUrl: '/api/jimeng/', // 使用相对路径，通过代理转发
-    apiKey: 'c14e91dae7fdadc29f684db39ff1ed90'
+    apiKey: '30899216a331e1c1d09df972bb985242'
   }
 };
 
