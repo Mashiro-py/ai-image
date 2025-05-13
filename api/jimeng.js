@@ -28,14 +28,21 @@ export default async function handler(req, res) {
     
     // 提取请求方法、头信息和正文
     const method = req.method;
+    
+    // 从请求头中获取Authorization，而不是硬编码
+    // 如果请求没有提供Authorization，则前端会使用自定义的轮询逻辑
+    const authHeader = req.headers.authorization;
+    
     const headers = {
       ...req.headers,
       'host': '39.104.18.10:8000',
       'origin': 'http://39.104.18.10:8000',
-      'Authorization': req.headers.authorization || `Bearer 30899216a331e1c1d09df972bb985242,286dfb6c3240f2f0ac07894667dac7ee,8324211718f83d71dce67f4d63132e27,0ddb2442c5ed08d2d8344708c955537e,ad26aaf1ecf1c1b6d555eb237e62d3b3,a45636f06f42b1d294c884ce6aba8f89`
+      'Authorization': authHeader // 使用请求中的Authorization头
     };
     
     // 删除一些可能导致问题的头信息
+    // 以下是可用的session_id列表，用于前端轮询
+    //30899216a331e1c1d09df972bb985242
     //286dfb6c3240f2f0ac07894667dac7ee
     //8324211718f83d71dce67f4d63132e27
     //0ddb2442c5ed08d2d8344708c955537e

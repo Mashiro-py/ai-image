@@ -13,7 +13,23 @@ const API_CONFIG = {
   // 即梦API配置
   jimengApi: {
     baseUrl: '/api/jimeng/', // 使用相对路径，通过代理转发
-    apiKey: '30899216a331e1c1d09df972bb985242,286dfb6c3240f2f0ac07894667dac7ee,8324211718f83d71dce67f4d63132e27,0ddb2442c5ed08d2d8344708c955537e,ad26aaf1ecf1c1b6d555eb237e62d3b3,a45636f06f42b1d294c884ce6aba8f89'
+    // 多个session_id轮询
+    apiKeys: [
+      '30899216a331e1c1d09df972bb985242', // 当前使用的
+      '286dfb6c3240f2f0ac07894667dac7ee', 
+      '8324211718f83d71dce67f4d63132e27',
+      '0ddb2442c5ed08d2d8344708c955537e',
+      'ad26aaf1ecf1c1b6d555eb237e62d3b3',
+      'a45636f06f42b1d294c884ce6aba8f89'
+    ],
+    currentKeyIndex: 0, // 当前使用的key索引
+    getNextApiKey: function() {
+      this.currentKeyIndex = (this.currentKeyIndex + 1) % this.apiKeys.length;
+      return this.apiKeys[this.currentKeyIndex];
+    },
+    getCurrentApiKey: function() {
+      return this.apiKeys[this.currentKeyIndex];
+    }
   }
 };
 
@@ -47,7 +63,7 @@ const jimengApiClient = axios.create({
   timeout: 60000, // 60秒超时
   headers: {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${API_CONFIG.jimengApi.apiKey}`
+    'Authorization': `Bearer ${API_CONFIG.jimengApi.getCurrentApiKey()}`
   }
 });
 
@@ -1019,59 +1035,89 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
  * @returns {Promise<Object>} 返回生成的图像信息
  */
 const generateJimengImage = async (prompt, options = {}) => {
-  try {
-    // 检查是否指定了宽度和高度
-    const width = options.width || 1024;
-    const height = options.height || 1024;
-    
-    // 准备请求数据
-    const requestData = {
-      model: "jimeng-3.0",
-      prompt: prompt,
-      negativePrompt: "",
-      width: width,
-      height: height,
-      sample_strength: 0.5
-    };
+  let retryCount = 0;
+  const maxRetries = API_CONFIG.jimengApi.apiKeys.length; // 最多尝试所有可用的key
+  
+  while (retryCount < maxRetries) {
+    try {
+      // 检查是否指定了宽度和高度
+      const width = options.width || 1024;
+      const height = options.height || 1024;
+      
+      // 准备请求数据
+      const requestData = {
+        model: "jimeng-3.0",
+        prompt: prompt,
+        negativePrompt: "",
+        width: width,
+        height: height,
+        sample_strength: 0.5
+      };
 
-    console.log('CW1.0请求数据:', requestData);
-    
-    // 发送即梦API请求
-    const response = await jimengApiClient.post('images/generations', requestData);
-    
-    console.log('CW1.0响应:', response.data);
-    
-    // 检查响应数据
-    if (!response.data.data || !Array.isArray(response.data.data) || response.data.data.length === 0) {
-      throw new Error('CW1.0返回数据格式不正确');
-    }
-    
-    // 构造返回结果 - 即梦API总是返回4张图像
-    const imageUrls = response.data.data.map(item => item.url);
-    
-    // 返回第一张图片作为主图片，其他作为额外图片
-    return {
-      imageUrl: imageUrls[0],
-      additionalImages: imageUrls.slice(1),
-      prompt: prompt,
-      model: "jimeng-3.0",
-      size: `${width}x${height}`
-    };
-  } catch (error) {
-    console.error('CW1.0图像生成错误:', error);
-    // 处理Axios错误
-    if (error.response) {
-      // 服务器返回了错误状态码
-      const errorMessage = error.response.data.error?.message || 'CW1.0图像生成失败';
-      throw new Error(errorMessage);
-    } else if (error.request) {
-      // 请求已发送但没有收到响应
-      throw new Error('CW1.0服务器未响应，请检查网络连接');
-    } else {
-      // 请求配置出错
-      throw error;
+      console.log(`CW1.0请求数据 (使用session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...):`, requestData);
+      
+      // 确保使用最新的session_id
+      jimengApiClient.defaults.headers.common['Authorization'] = `Bearer ${API_CONFIG.jimengApi.getCurrentApiKey()}`;
+      
+      // 发送即梦API请求
+      const response = await jimengApiClient.post('images/generations', requestData);
+      
+      console.log('CW1.0响应:', response.data);
+      
+      // 检查响应数据
+      if (!response.data.data || !Array.isArray(response.data.data) || response.data.data.length === 0) {
+        throw new Error('CW1.0返回数据格式不正确');
+      }
+      
+      // 构造返回结果 - 即梦API总是返回4张图像
+      const imageUrls = response.data.data.map(item => item.url);
+      
+      // 返回第一张图片作为主图片，其他作为额外图片
+      return {
+        imageUrl: imageUrls[0],
+        additionalImages: imageUrls.slice(1),
+        prompt: prompt,
+        model: "jimeng-3.0",
+        size: `${width}x${height}`
+      };
+    } catch (error) {
+      console.error(`CW1.0图像生成错误(使用session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...):`, error);
+      
+      // 如果有错误响应且是"记录不存在"错误或其他可能与session_id有关的错误
+      if (error.response && 
+          (error.response.data.errcode === -2007 || 
+           error.response.status === 401 ||
+           error.response.status === 403)) {
+        
+        console.log(`切换到下一个session_id(当前失败的session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...)`);
+        // 切换到下一个session_id
+        API_CONFIG.jimengApi.getNextApiKey();
+        retryCount++;
+        
+        // 如果还有其他key可以尝试，继续循环
+        if (retryCount < maxRetries) {
+          console.log(`尝试使用新的session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...`);
+          continue;
+        }
+      }
+      
+      // 处理Axios错误
+      if (error.response) {
+        // 服务器返回了错误状态码
+        const errorMessage = error.response.data.error?.message || error.response.data.errmsg || 'CW1.0图像生成失败';
+        throw new Error(errorMessage);
+      } else if (error.request) {
+        // 请求已发送但没有收到响应
+        throw new Error('CW1.0服务器未响应，请检查网络连接');
+      } else {
+        // 请求配置出错
+        throw error;
+      }
     }
   }
+  
+  // 如果所有尝试都失败
+  throw new Error('所有可用的session_id都失败了，请稍后再试');
 };
 
 /**
