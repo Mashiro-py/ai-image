@@ -22,14 +22,20 @@ const API_CONFIG = {
       'ad26aaf1ecf1c1b6d555eb237e62d3b3',
       'a45636f06f42b1d294c884ce6aba8f89'
     ],
-    currentKeyIndex: 0, // 当前使用的key索引
+    currentKeyIndex: Math.floor(Math.random() * 6), // 随机选择初始索引，实现负载均衡
     getNextApiKey: function() {
       this.currentKeyIndex = (this.currentKeyIndex + 1) % this.apiKeys.length;
       return this.apiKeys[this.currentKeyIndex];
     },
     getCurrentApiKey: function() {
       return this.apiKeys[this.currentKeyIndex];
-    }
+    },
+    getRandomApiKey: function() {
+      this.currentKeyIndex = Math.floor(Math.random() * this.apiKeys.length);
+      return this.apiKeys[this.currentKeyIndex];
+    },
+    earlyCancelTimeout: 40000, // 40秒提前取消请求，避免等待过长时间
+    maxTimeout: 180000 // 最长超时时间，保险措施
   }
 };
 
@@ -60,7 +66,7 @@ const apiClient = axios.create({
 // 创建即梦API的axios实例
 const jimengApiClient = axios.create({
   baseURL: API_CONFIG.jimengApi.baseUrl,
-  timeout: 60000, // 60秒超时
+  timeout: API_CONFIG.jimengApi.maxTimeout, // 最长超时时间
   headers: {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${API_CONFIG.jimengApi.getCurrentApiKey()}`
@@ -1029,14 +1035,51 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
 };
 
 /**
+ * 使用CancelToken和超时控制发起请求，超过指定时间自动取消并重试
+ * @param {Function} requestFunction - 请求函数，返回Promise
+ * @param {number} timeoutMs - 提前取消的超时时间(ms)
+ * @returns {Promise} - 请求结果或超时错误
+ */
+const requestWithEarlyTimeout = async (requestFunction, timeoutMs) => {
+  // 创建一个可取消的token
+  const source = axios.CancelToken.source();
+  
+  // 创建定时器Promise
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => {
+      source.cancel('操作超时，主动切换到下一个session_id');
+      reject(new Error('提前超时，切换session_id'));
+    }, timeoutMs);
+  });
+  
+  // 创建请求Promise，传入CancelToken
+  const requestPromise = requestFunction(source.token);
+  
+  // 使用Promise.race，谁先完成就用谁的结果
+  try {
+    return await Promise.race([requestPromise, timeoutPromise]);
+  } catch (error) {
+    if (axios.isCancel(error)) {
+      // 请求被主动取消，返回特殊错误以便外层知道是提前超时
+      error.isEarlyTimeout = true;
+    }
+    throw error;
+  }
+};
+
+/**
  * 使用即梦API生成图像
  * @param {string} prompt - 图像描述文本
  * @param {Object} options - 图像生成选项
  * @returns {Promise<Object>} 返回生成的图像信息
  */
 const generateJimengImage = async (prompt, options = {}) => {
+  // 首先随机选择一个session_id开始，实现负载均衡
+  API_CONFIG.jimengApi.getRandomApiKey();
+  console.log(`初始随机选择session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...`);
+  
   let retryCount = 0;
-  const maxRetries = API_CONFIG.jimengApi.apiKeys.length; // 最多尝试所有可用的key
+  const maxRetries = API_CONFIG.jimengApi.apiKeys.length * 2; // 增加最大尝试次数，因为可能有提前超时的情况
   
   while (retryCount < maxRetries) {
     try {
@@ -1059,8 +1102,11 @@ const generateJimengImage = async (prompt, options = {}) => {
       // 确保使用最新的session_id
       jimengApiClient.defaults.headers.common['Authorization'] = `Bearer ${API_CONFIG.jimengApi.getCurrentApiKey()}`;
       
-      // 发送即梦API请求
-      const response = await jimengApiClient.post('images/generations', requestData);
+      // 使用提前超时控制的请求函数
+      const response = await requestWithEarlyTimeout(
+        (cancelToken) => jimengApiClient.post('images/generations', requestData, { cancelToken }), 
+        API_CONFIG.jimengApi.earlyCancelTimeout
+      );
       
       console.log('CW1.0响应:', response.data);
       
@@ -1081,31 +1127,46 @@ const generateJimengImage = async (prompt, options = {}) => {
         size: `${width}x${height}`
       };
     } catch (error) {
-      console.error(`CW1.0图像生成错误(使用session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...):`, error);
+      // 检查是否是我们主动提前取消的请求
+      const isEarlyTimeout = error.isEarlyTimeout || 
+                             (axios.isCancel && axios.isCancel(error)) ||
+                             error.message === '提前超时，切换session_id';
       
-      // 如果有错误响应且是"记录不存在"错误或其他可能与session_id有关的错误
-      if (error.response && 
-          (error.response.data.errcode === -2007 || 
-           error.response.status === 401 ||
-           error.response.status === 403)) {
-        
-        console.log(`切换到下一个session_id(当前失败的session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...)`);
-        // 切换到下一个session_id
-        API_CONFIG.jimengApi.getNextApiKey();
-        retryCount++;
-        
-        // 如果还有其他key可以尝试，继续循环
-        if (retryCount < maxRetries) {
-          console.log(`尝试使用新的session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...`);
-          continue;
-        }
+      if (isEarlyTimeout) {
+        console.log(`请求等待时间过长 (${API_CONFIG.jimengApi.earlyCancelTimeout}ms)，主动切换session_id`);
+      } else {
+        console.error(`CW1.0图像生成错误(使用session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...):`, error);
       }
       
-      // 处理Axios错误
-      if (error.response) {
+      // 无论什么错误，都切换到下一个session_id
+      // 这包括:
+      // - 记录不存在错误 (errcode === -2007)
+      // - 授权错误 (401/403)
+      // - 超时错误
+      // - 提前主动取消的请求
+      // - 其他任何错误
+      
+      console.log(`切换到下一个session_id(当前失败的session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...)`);
+      // 切换到下一个session_id
+      API_CONFIG.jimengApi.getNextApiKey();
+      retryCount++;
+      
+      // 如果还有其他key可以尝试，继续循环
+      if (retryCount < maxRetries) {
+        console.log(`尝试使用新的session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...`);
+        continue;
+      }
+      
+      // 如果已经尝试了所有key，则根据错误类型返回适当的错误信息
+      if (isEarlyTimeout) {
+        throw new Error('所有session_id都响应超时，请稍后再试');
+      } else if (error.response) {
         // 服务器返回了错误状态码
         const errorMessage = error.response.data.error?.message || error.response.data.errmsg || 'CW1.0图像生成失败';
         throw new Error(errorMessage);
+      } else if (error.code === 'ECONNABORTED') {
+        // 请求超时
+        throw new Error('CW1.0服务器响应超时，请稍后再试');
       } else if (error.request) {
         // 请求已发送但没有收到响应
         throw new Error('CW1.0服务器未响应，请检查网络连接');
