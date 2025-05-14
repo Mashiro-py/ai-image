@@ -63,13 +63,12 @@ const apiClient = axios.create({
   }
 });
 
-// 创建即梦API的axios实例
+// 创建即梦API的axios实例 - 不再在此处设置Authorization头，改为每次请求时单独设置
 const jimengApiClient = axios.create({
   baseURL: API_CONFIG.jimengApi.baseUrl,
   timeout: API_CONFIG.jimengApi.maxTimeout, // 最长超时时间
   headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${API_CONFIG.jimengApi.getCurrentApiKey()}`
+    'Content-Type': 'application/json'
   }
 });
 
@@ -1082,6 +1081,9 @@ const generateJimengImage = async (prompt, options = {}) => {
   const maxRetries = API_CONFIG.jimengApi.apiKeys.length * 2; // 增加最大尝试次数，因为可能有提前超时的情况
   
   while (retryCount < maxRetries) {
+    // 每次请求前获取当前的session_id
+    const currentSessionId = API_CONFIG.jimengApi.getCurrentApiKey();
+    
     try {
       // 检查是否指定了宽度和高度
       const width = options.width || 1024;
@@ -1097,14 +1099,22 @@ const generateJimengImage = async (prompt, options = {}) => {
         sample_strength: 0.5
       };
 
-      console.log(`CW1.0请求数据 (使用session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...):`, requestData);
+      console.log(`CW1.0请求数据 (使用session_id: ${currentSessionId.substring(0, 8)}...):`, requestData);
       
-      // 确保使用最新的session_id
-      jimengApiClient.defaults.headers.common['Authorization'] = `Bearer ${API_CONFIG.jimengApi.getCurrentApiKey()}`;
+      // 不再使用默认headers，而是每次请求时显式传入
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${currentSessionId}`
+      };
       
-      // 使用提前超时控制的请求函数
+      console.log(`发送请求，使用Authorization: Bearer ${currentSessionId.substring(0, 8)}...`);
+      
+      // 使用提前超时控制的请求函数，并传递当前headers
       const response = await requestWithEarlyTimeout(
-        (cancelToken) => jimengApiClient.post('images/generations', requestData, { cancelToken }), 
+        (cancelToken) => jimengApiClient.post('images/generations', requestData, { 
+          cancelToken,
+          headers: headers // 显式传递包含当前session_id的headers
+        }), 
         API_CONFIG.jimengApi.earlyCancelTimeout
       );
       
@@ -1135,7 +1145,7 @@ const generateJimengImage = async (prompt, options = {}) => {
       if (isEarlyTimeout) {
         console.log(`请求等待时间过长 (${API_CONFIG.jimengApi.earlyCancelTimeout}ms)，主动切换session_id`);
       } else {
-        console.error(`CW1.0图像生成错误(使用session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...):`, error);
+        console.error(`CW1.0图像生成错误(使用session_id: ${currentSessionId.substring(0, 8)}...):`, error);
       }
       
       // 无论什么错误，都切换到下一个session_id
@@ -1146,14 +1156,15 @@ const generateJimengImage = async (prompt, options = {}) => {
       // - 提前主动取消的请求
       // - 其他任何错误
       
-      console.log(`切换到下一个session_id(当前失败的session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...)`);
+      console.log(`切换到下一个session_id(当前失败的session_id: ${currentSessionId.substring(0, 8)}...)`);
       // 切换到下一个session_id
       API_CONFIG.jimengApi.getNextApiKey();
+      const newSessionId = API_CONFIG.jimengApi.getCurrentApiKey();
       retryCount++;
       
       // 如果还有其他key可以尝试，继续循环
       if (retryCount < maxRetries) {
-        console.log(`尝试使用新的session_id: ${API_CONFIG.jimengApi.getCurrentApiKey().substring(0, 8)}...`);
+        console.log(`尝试使用新的session_id: ${newSessionId.substring(0, 8)}...`);
         continue;
       }
       
