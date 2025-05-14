@@ -15,12 +15,14 @@ const API_CONFIG = {
     baseUrl: '/api/jimeng/', // 使用相对路径，通过代理转发
     // 多个session_id轮询
     apiKeys: [
-      '30899216a331e1c1d09df972bb985242', // 当前使用的
-      '286dfb6c3240f2f0ac07894667dac7ee', 
+      "95c1e94305ac13780d44bf13d7f3482b",
+      "30899216a331e1c1d09df972bb985242", // 当前使用的
+      "286dfb6c3240f2f0ac07894667dac7ee", 
       '8324211718f83d71dce67f4d63132e27',
       '0ddb2442c5ed08d2d8344708c955537e',
       'ad26aaf1ecf1c1b6d555eb237e62d3b3',
-      'a45636f06f42b1d294c884ce6aba8f89'
+      'a45636f06f42b1d294c884ce6aba8f89',
+      'c14e91dae7fdadc29f684db39ff1ed90'
     ],
     currentKeyIndex: Math.floor(Math.random() * 6), // 随机选择初始索引，实现负载均衡
     getNextApiKey: function() {
