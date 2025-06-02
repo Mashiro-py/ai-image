@@ -32,7 +32,7 @@ export default async function handler(req, res) {
       ...req.headers,
       'host': 'api.coze.cn',
       'origin': 'https://api.coze.cn',
-      'Authorization': 'Bearer pat_gVIYbuXftNX6ByXm8jjyRYqluzBydYatrV1BAe1jAXgjUE9887C52SYNotLxTZoX'
+      'Authorization': 'Bearer pat_j9KRcN957xmDa9sS6P3PPHlCdPxKGrrE4mbxaCs2hjQt8KxpV9iPqvGvSGM5jHPf'
     };
     
     // 删除一些可能导致问题的头信息
