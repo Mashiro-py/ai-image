@@ -1005,7 +1005,7 @@ export const optimizePromptWithCoze = async (originalPrompt, params) => {
       {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer pat_gVIYbuXftNX6ByXm8jjyRYqluzBydYatrV1BAe1jAXgjUE9887C52SYNotLxTZoX'
+          'Authorization': 'Bearer pat_j9KRcN957xmDa9sS6P3PPHlCdPxKGrrE4mbxaCs2hjQt8KxpV9iPqvGvSGM5jHPf'
         }
       }
     );
